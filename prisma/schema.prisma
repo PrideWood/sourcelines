@@ -1,0 +1,303 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum user_role {
+  USER
+  ADMIN
+}
+
+enum moderation_status {
+  PENDING
+  APPROVED
+  REVISION_REQUIRED
+  REJECTED
+}
+
+enum verification_status {
+  UNVERIFIED
+  PARTIALLY_VERIFIED
+  VERIFIED
+}
+
+enum difficulty_level {
+  A1
+  A2
+  B1
+  B2
+  C1
+  C2
+  UNKNOWN
+}
+
+enum tag_type {
+  SOURCE
+  THEME
+  LEARNING
+  MOOD
+}
+
+enum evidence_type {
+  BOOK
+  ARTICLE
+  WEBSITE
+  ARCHIVE
+  OTHER
+}
+
+enum report_status {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password_hash String
+  display_name  String
+  role          user_role @default(USER)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  submissions          Submission[] @relation("submission_submitter")
+  reviewed_submissions Submission[] @relation("submission_reviewer")
+  favorites            Favorite[]
+  reports              Report[]     @relation("report_reporter")
+
+  @@index([created_at])
+  @@map("users")
+}
+
+model Language {
+  code        String   @id @db.VarChar(16)
+  name_en     String
+  name_native String
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  works       Work[]
+  quotes      Quote[]
+  submissions Submission[]
+
+  @@index([is_active])
+  @@map("languages")
+}
+
+model Author {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  name_native String?
+  bio         String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  works  Work[]
+  quotes Quote[]
+
+  @@index([name])
+  @@map("authors")
+}
+
+model Work {
+  id            String    @id @default(cuid())
+  slug          String    @unique
+  title         String
+  title_native  String?
+  author_id     String?
+  language_code String?
+  published_at  DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  author   Author?   @relation(fields: [author_id], references: [id], onDelete: SetNull)
+  language Language? @relation(fields: [language_code], references: [code], onDelete: SetNull)
+  quotes   Quote[]
+
+  @@index([author_id])
+  @@index([language_code])
+  @@index([published_at])
+  @@map("works")
+}
+
+model Quote {
+  id                  String              @id @default(cuid())
+  original_text       String
+  translation_text    String?
+  original_language   String
+  author_id           String?
+  work_id             String?
+  source_title        String?
+  source_locator      String?
+  moderation_status   moderation_status   @default(APPROVED)
+  verification_status verification_status @default(UNVERIFIED)
+  difficulty_level    difficulty_level    @default(UNKNOWN)
+  created_at          DateTime            @default(now())
+  updated_at          DateTime            @updatedAt
+
+  original_language_ref Language        @relation(fields: [original_language], references: [code])
+  author                Author?         @relation(fields: [author_id], references: [id], onDelete: SetNull)
+  work                  Work?           @relation(fields: [work_id], references: [id], onDelete: SetNull)
+  quote_evidences       QuoteEvidence[]
+  quote_tags            QuoteTag[]
+  favorites             Favorite[]
+  reports               Report[]
+  submissions           Submission[]    @relation("submission_published_quote")
+
+  @@index([original_language])
+  @@index([author_id])
+  @@index([work_id])
+  @@index([moderation_status, created_at])
+  @@index([verification_status])
+  @@index([difficulty_level])
+  @@map("quotes")
+}
+
+model QuoteEvidence {
+  id            String        @id @default(cuid())
+  quote_id      String
+  evidence_type evidence_type @default(OTHER)
+  title         String?
+  url           String?
+  excerpt       String?
+  note          String?
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
+
+  quote Quote @relation(fields: [quote_id], references: [id], onDelete: Cascade)
+
+  @@index([quote_id])
+  @@index([evidence_type])
+  @@map("quote_evidences")
+}
+
+model Tag {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  tag_type    tag_type @default(THEME)
+  parent_id   String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  parent     Tag?       @relation("tag_hierarchy", fields: [parent_id], references: [id], onDelete: SetNull)
+  children   Tag[]      @relation("tag_hierarchy")
+  quote_tags QuoteTag[]
+
+  @@index([tag_type])
+  @@index([parent_id])
+  @@index([name])
+  @@map("tags")
+}
+
+model QuoteTag {
+  quote_id String
+  tag_id   String
+
+  quote Quote @relation(fields: [quote_id], references: [id], onDelete: Cascade)
+  tag   Tag   @relation(fields: [tag_id], references: [id], onDelete: Cascade)
+
+  @@id([quote_id, tag_id])
+  @@index([tag_id])
+  @@map("quote_tags")
+}
+
+model Submission {
+  id                  String              @id @default(cuid())
+  submitter_id        String
+  original_text       String
+  translation_text    String?
+  original_language   String
+  source_title        String?
+  source_author_name  String?
+  source_work_title   String?
+  speaker_name        String?
+  genre_type          String?
+  source_published_at DateTime?
+  source_locator      String?
+  raw_note            String?
+  moderation_status   moderation_status   @default(PENDING)
+  verification_status verification_status @default(UNVERIFIED)
+  review_note         String?
+  reviewed_by_id      String?
+  reviewed_at         DateTime?
+  published_quote_id  String?
+  created_at          DateTime            @default(now())
+  updated_at          DateTime            @updatedAt
+
+  submitter             User                 @relation("submission_submitter", fields: [submitter_id], references: [id], onDelete: Cascade)
+  reviewer              User?                @relation("submission_reviewer", fields: [reviewed_by_id], references: [id], onDelete: SetNull)
+  original_language_ref Language             @relation(fields: [original_language], references: [code])
+  published_quote       Quote?               @relation("submission_published_quote", fields: [published_quote_id], references: [id], onDelete: SetNull)
+  submission_evidences  SubmissionEvidence[]
+  reports               Report[]
+
+  @@index([submitter_id])
+  @@index([reviewed_by_id])
+  @@index([published_quote_id])
+  @@index([original_language])
+  @@index([moderation_status, created_at])
+  @@index([verification_status])
+  @@map("submissions")
+}
+
+model SubmissionEvidence {
+  id            String        @id @default(cuid())
+  submission_id String
+  evidence_type evidence_type @default(OTHER)
+  title         String?
+  url           String?
+  excerpt       String?
+  note          String?
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
+
+  submission Submission @relation(fields: [submission_id], references: [id], onDelete: Cascade)
+
+  @@index([submission_id])
+  @@index([evidence_type])
+  @@map("submission_evidences")
+}
+
+model Favorite {
+  user_id    String
+  quote_id   String
+  created_at DateTime @default(now())
+
+  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  quote Quote @relation(fields: [quote_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, quote_id])
+  @@index([quote_id])
+  @@map("favorites")
+}
+
+model Report {
+  id               String        @id @default(cuid())
+  reporter_user_id String
+  quote_id         String?
+  submission_id    String?
+  reason_code      String
+  detail           String?
+  status           report_status @default(PENDING)
+  created_at       DateTime      @default(now())
+  updated_at       DateTime      @updatedAt
+
+  reporter   User        @relation("report_reporter", fields: [reporter_user_id], references: [id], onDelete: Cascade)
+  quote      Quote?      @relation(fields: [quote_id], references: [id], onDelete: Cascade)
+  submission Submission? @relation(fields: [submission_id], references: [id], onDelete: Cascade)
+
+  @@index([reporter_user_id])
+  @@index([quote_id])
+  @@index([submission_id])
+  @@index([status, created_at])
+  @@map("reports")
+}

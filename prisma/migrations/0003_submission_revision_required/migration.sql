@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "moderation_status" ADD VALUE IF NOT EXISTS 'REVISION_REQUIRED';
