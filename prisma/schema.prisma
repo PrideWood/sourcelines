@@ -184,6 +184,7 @@ model Tag {
   name        String
   description String?
   tag_type    tag_type @default(THEME)
+  sort_order  Int      @default(0)
   parent_id   String?
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
@@ -191,8 +192,10 @@ model Tag {
   parent     Tag?       @relation("tag_hierarchy", fields: [parent_id], references: [id], onDelete: SetNull)
   children   Tag[]      @relation("tag_hierarchy")
   quote_tags QuoteTag[]
+  submission_tags SubmissionTag[]
 
   @@index([tag_type])
+  @@index([tag_type, sort_order])
   @@index([parent_id])
   @@index([name])
   @@map("tags")
@@ -238,6 +241,7 @@ model Submission {
   original_language_ref Language             @relation(fields: [original_language], references: [code])
   published_quote       Quote?               @relation("submission_published_quote", fields: [published_quote_id], references: [id], onDelete: SetNull)
   submission_evidences  SubmissionEvidence[]
+  submission_tags       SubmissionTag[]
   reports               Report[]
 
   @@index([submitter_id])
@@ -247,6 +251,18 @@ model Submission {
   @@index([moderation_status, created_at])
   @@index([verification_status])
   @@map("submissions")
+}
+
+model SubmissionTag {
+  submission_id String
+  tag_id        String
+
+  submission Submission @relation(fields: [submission_id], references: [id], onDelete: Cascade)
+  tag        Tag        @relation(fields: [tag_id], references: [id], onDelete: Cascade)
+
+  @@id([submission_id, tag_id])
+  @@index([tag_id])
+  @@map("submission_tags")
 }
 
 model SubmissionEvidence {

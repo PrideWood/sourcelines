@@ -47,7 +47,10 @@ export default async function AdminSubmissionsPage({
           <CardHeader className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-base">{item.source_work_title ?? item.source_title ?? "未填写来源标题"}</CardTitle>
-              <Badge>{moderationText[item.moderation_status]}</Badge>
+              <div className="flex items-center gap-2">
+                <Badge>{item.published_quote_id ? "条目修改" : "新投稿"}</Badge>
+                <Badge>{moderationText[item.moderation_status]}</Badge>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">

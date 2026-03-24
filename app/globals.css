@@ -52,3 +52,50 @@ body {
 .reading-secondary {
   @apply mt-3 border-l-2 border-border pl-4 text-muted-foreground;
 }
+
+.reading-quote-clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
+
+.reading-secondary-clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.quote-text-region {
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+  padding-bottom: 2.25rem;
+}
+
+.quote-text-region::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3.25rem;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    hsl(var(--card) / 0) 0%,
+    hsl(var(--card) / 0.88) 62%,
+    hsl(var(--card)) 100%
+  );
+}
+
+.quote-meta-region {
+  flex-shrink: 0;
+}
+
+.quote-tag-row {
+  min-height: 2rem;
+  align-content: flex-start;
+  overflow: hidden;
+}

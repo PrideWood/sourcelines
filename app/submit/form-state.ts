@@ -6,6 +6,7 @@ export type SubmitFieldErrors = {
   genre_type?: string;
   raw_source_location?: string;
   evidence?: string;
+  tag_ids?: string;
 };
 
 export type SubmitFormState = {
@@ -22,6 +23,7 @@ export type SubmitFormState = {
     raw_translated_text: string;
     raw_note: string;
     evidence_url: string;
+    tag_ids: string[];
   };
 };
 
@@ -38,5 +40,6 @@ export const initialSubmitFormState: SubmitFormState = {
     raw_translated_text: "",
     raw_note: "",
     evidence_url: "",
+    tag_ids: [],
   },
 };

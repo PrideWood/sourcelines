@@ -16,11 +16,9 @@ export default async function HomePage() {
     <div className="space-y-10">
       <section className="space-y-4 border-b border-border pb-8">
         <Badge>Reading-first Archive</Badge>
-        <h1 className="max-w-3xl text-3xl font-semibold tracking-tight md:text-4xl">
-          可审核、可检索、可收藏的多语言原文引文资料库
-        </h1>
+        <h1 className="max-w-3xl text-3xl font-semibold tracking-tight md:text-4xl">读到好句子，也知道它从哪里来。</h1>
         <p className="max-w-2xl text-base text-muted-foreground">
-          SourceLines 专注于原文优先与出处意识，先做资料库，再做扩展能力。
+          SourceLines 以原文为主，兼顾译文与来源信息，适合检索、浏览与收藏。
         </p>
         <div className="flex gap-3">
           <Link className={buttonVariants()} href="/quotes">
@@ -39,7 +37,7 @@ export default async function HomePage() {
           </p>
         ) : null}
         {quotes.map((quote) => (
-          <QuoteCard key={quote.id} quote={quote} />
+          <QuoteCard key={quote.id} quote={quote} uniformHeight />
         ))}
       </section>
     </div>

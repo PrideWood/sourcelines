@@ -156,64 +156,46 @@ async function main() {
 
   const workBySlug = Object.fromEntries(works.map((w) => [w.slug, w]));
 
-  const tags = await Promise.all([
-    prisma.tag.create({
-      data: {
-        slug: "source-literature",
-        name: "文学来源",
-        description: "来源类型：文学文本",
-        tag_type: "SOURCE",
-      },
-    }),
-    prisma.tag.create({
-      data: {
-        slug: "source-film",
-        name: "影视来源",
-        description: "来源类型：电影对白",
-        tag_type: "SOURCE",
-      },
-    }),
-    prisma.tag.create({
-      data: {
-        slug: "theme-love",
-        name: "爱情",
-        description: "主题：爱情与亲密关系",
-        tag_type: "THEME",
-      },
-    }),
-    prisma.tag.create({
-      data: {
-        slug: "theme-solitude",
-        name: "孤独",
-        description: "主题：孤独与疏离",
-        tag_type: "THEME",
-      },
-    }),
-    prisma.tag.create({
-      data: {
-        slug: "learning-a2",
-        name: "学习难度 A2",
-        description: "学习标签：A2",
-        tag_type: "LEARNING",
-      },
-    }),
-    prisma.tag.create({
-      data: {
-        slug: "learning-b1",
-        name: "学习难度 B1",
-        description: "学习标签：B1",
-        tag_type: "LEARNING",
-      },
-    }),
-    prisma.tag.create({
-      data: {
-        slug: "learning-c1",
-        name: "学习难度 C1",
-        description: "学习标签：C1",
-        tag_type: "LEARNING",
-      },
-    }),
-  ]);
+  const tagSeed = [
+    { slug: "source-film", name: "影视", tag_type: "SOURCE" },
+    { slug: "source-literature", name: "文学", tag_type: "SOURCE" },
+    { slug: "source-poetry", name: "诗歌", tag_type: "SOURCE" },
+    { slug: "source-drama", name: "戏剧", tag_type: "SOURCE" },
+    { slug: "source-speech", name: "演讲", tag_type: "SOURCE" },
+    { slug: "source-lyrics", name: "歌词", tag_type: "SOURCE" },
+    { slug: "theme-love", name: "爱情", tag_type: "THEME" },
+    { slug: "theme-solitude", name: "孤独", tag_type: "THEME" },
+    { slug: "theme-growth", name: "成长", tag_type: "THEME" },
+    { slug: "theme-memory", name: "记忆", tag_type: "THEME" },
+    { slug: "theme-time", name: "时间", tag_type: "THEME" },
+    { slug: "theme-farewell", name: "告别", tag_type: "THEME" },
+    { slug: "theme-reunion", name: "重逢", tag_type: "THEME" },
+    { slug: "theme-fate", name: "命运", tag_type: "THEME" },
+    { slug: "theme-freedom", name: "自由", tag_type: "THEME" },
+    { slug: "theme-family", name: "家庭", tag_type: "THEME" },
+    { slug: "theme-youth", name: "青春", tag_type: "THEME" },
+    { slug: "theme-hope", name: "希望", tag_type: "THEME" },
+    { slug: "theme-friendship", name: "友情", tag_type: "THEME" },
+    { slug: "theme-self", name: "自我", tag_type: "THEME" },
+    { slug: "learning-a1", name: "A1", tag_type: "LEARNING" },
+    { slug: "learning-a2", name: "A2", tag_type: "LEARNING" },
+    { slug: "learning-b1", name: "B1", tag_type: "LEARNING" },
+    { slug: "learning-b2", name: "B2", tag_type: "LEARNING" },
+    { slug: "learning-c1", name: "C1", tag_type: "LEARNING" },
+    { slug: "learning-c2", name: "C2", tag_type: "LEARNING" },
+  ];
+
+  const tags = await Promise.all(
+    tagSeed.map((item) =>
+      prisma.tag.create({
+        data: {
+          slug: item.slug,
+          name: item.name,
+          tag_type: item.tag_type,
+        },
+      }),
+    ),
+  );
 
   const tagBySlug = Object.fromEntries(tags.map((t) => [t.slug, t]));
 
@@ -451,6 +433,21 @@ async function main() {
       },
     }),
   ]);
+
+  await prisma.$executeRaw`
+    INSERT INTO "submission_tags" ("submission_id", "tag_id")
+    VALUES
+      (${pendingSubmission.id}, ${tagBySlug["source-literature"].id}),
+      (${pendingSubmission.id}, ${tagBySlug["theme-memory"].id}),
+      (${pendingSubmission.id}, ${tagBySlug["learning-b2"].id}),
+      (${rejectedSubmission.id}, ${tagBySlug["source-literature"].id}),
+      (${rejectedSubmission.id}, ${tagBySlug["theme-time"].id}),
+      (${rejectedSubmission.id}, ${tagBySlug["learning-c1"].id}),
+      (${approvedSubmission.id}, ${tagBySlug["source-literature"].id}),
+      (${approvedSubmission.id}, ${tagBySlug["theme-growth"].id}),
+      (${approvedSubmission.id}, ${tagBySlug["learning-b1"].id})
+    ON CONFLICT ("submission_id", "tag_id") DO NOTHING
+  `;
 
   await prisma.submissionEvidence.createMany({
     data: [

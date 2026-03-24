@@ -30,6 +30,10 @@ export async function updateQuoteAction(formData: FormData) {
   const difficultyRaw = String(formData.get("difficulty_level") ?? "").trim();
   const authorId = String(formData.get("author_id") ?? "").trim();
   const workId = String(formData.get("work_id") ?? "").trim();
+  const tagIds = formData
+    .getAll("tag_ids")
+    .map((item) => String(item).trim())
+    .filter((item) => item.length > 0);
 
   if (!quoteId || !originalText || !originalLanguage) {
     redirect(`/admin/quotes/${quoteId || ""}?error=missing_required`);
@@ -44,18 +48,43 @@ export async function updateQuoteAction(formData: FormData) {
   }
 
   try {
-    await prisma.quote.update({
-      where: { id: quoteId },
-      data: {
-        original_text: originalText,
-        translation_text: translationText || null,
-        original_language: originalLanguage,
-        source_locator: sourceLocator || null,
-        verification_status: verificationStatusRaw as verification_status,
-        difficulty_level: difficultyRaw as difficulty_level,
-        author_id: authorId || null,
-        work_id: workId || null,
-      },
+    await prisma.$transaction(async (tx) => {
+      const validTags = tagIds.length
+        ? await tx.tag.findMany({
+            where: { id: { in: tagIds } },
+            select: { id: true, tag_type: true },
+          })
+        : [];
+
+      const learningTagCount = validTags.filter((item) => item.tag_type === "LEARNING").length;
+      if (learningTagCount > 1) {
+        redirect(`/admin/quotes/${quoteId}?error=invalid_learning_tags`);
+      }
+
+      await tx.quote.update({
+        where: { id: quoteId },
+        data: {
+          original_text: originalText,
+          translation_text: translationText || null,
+          original_language: originalLanguage,
+          source_locator: sourceLocator || null,
+          verification_status: verificationStatusRaw as verification_status,
+          difficulty_level: difficultyRaw as difficulty_level,
+          author_id: authorId || null,
+          work_id: workId || null,
+        },
+      });
+
+      await tx.quoteTag.deleteMany({ where: { quote_id: quoteId } });
+      if (validTags.length > 0) {
+        await tx.quoteTag.createMany({
+          data: validTags.map((tag) => ({
+            quote_id: quoteId,
+            tag_id: tag.id,
+          })),
+          skipDuplicates: true,
+        });
+      }
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {

@@ -7,12 +7,14 @@ import { redirect } from "next/navigation";
 import type { SubmitFormState, SubmitFieldErrors } from "@/app/submit/form-state";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
+import { ensureSubmissionTagsTable } from "@/lib/submission-tags";
 
 function normalizeText(value: FormDataEntryValue | null) {
   return String(value ?? "").trim();
 }
 
 export async function submitQuoteAction(_prevState: SubmitFormState, formData: FormData): Promise<SubmitFormState> {
+  const quoteId = normalizeText(formData.get("quote_id"));
   const values = {
     original_text: normalizeText(formData.get("original_text")),
     language: normalizeText(formData.get("language")).toLowerCase(),
@@ -24,6 +26,10 @@ export async function submitQuoteAction(_prevState: SubmitFormState, formData: F
     raw_translated_text: normalizeText(formData.get("raw_translated_text")),
     raw_note: normalizeText(formData.get("raw_note")),
     evidence_url: normalizeText(formData.get("evidence_url")),
+    tag_ids: formData
+      .getAll("tag_ids")
+      .map((item) => String(item).trim())
+      .filter((item) => item.length > 0),
   };
 
   const evidenceFile = formData.get("evidence_file");
@@ -36,8 +42,11 @@ export async function submitQuoteAction(_prevState: SubmitFormState, formData: F
   if (!values.raw_work_title) fieldErrors.raw_work_title = "请输入作品名。";
   if (!values.raw_author_name) fieldErrors.raw_author_name = "请输入作者名。";
   if (!values.raw_source_location) fieldErrors.raw_source_location = "请输入出处位置。";
+  if (values.tag_ids.length === 0) fieldErrors.tag_ids = "请至少选择一个标签。";
 
-  if (!values.evidence_url && !hasEvidenceFile) {
+  const isUpdateFlow = quoteId.length > 0;
+
+  if (!isUpdateFlow && !values.evidence_url && !hasEvidenceFile) {
     fieldErrors.evidence = "请提供证据链接，或上传一个证据文件。";
   }
 
@@ -66,8 +75,36 @@ export async function submitQuoteAction(_prevState: SubmitFormState, formData: F
     redirect(`/login?next=${encodeURIComponent("/submit")}`);
   }
 
+  const allowSubmissionTags = values.tag_ids.length > 0 ? await ensureSubmissionTagsTable() : false;
+  if (values.tag_ids.length > 0 && !allowSubmissionTags) {
+    return {
+      formError: "标签保存失败：数据库标签关联结构不可用，请联系管理员执行迁移后重试。",
+      fieldErrors: {},
+      values,
+    };
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
+      const existingTags = values.tag_ids.length
+        ? await tx.tag.findMany({
+            where: { id: { in: values.tag_ids } },
+            select: { id: true, tag_type: true },
+          })
+        : [];
+
+      const learningTagCount = existingTags.filter((item) => item.tag_type === "LEARNING").length;
+      if (learningTagCount > 1) {
+        throw new Error("MULTIPLE_LEARNING_TAGS");
+      }
+
+      if (isUpdateFlow) {
+        const targetQuote = await tx.quote.findUnique({ where: { id: quoteId }, select: { id: true } });
+        if (!targetQuote) {
+          throw new Error("QUOTE_NOT_FOUND");
+        }
+      }
+
       const submission = await tx.submission.create({
         data: {
           submitter_id: session.user.id,
@@ -80,8 +117,20 @@ export async function submitQuoteAction(_prevState: SubmitFormState, formData: F
           genre_type: values.genre_type || "unknown",
           source_locator: values.raw_source_location,
           raw_note: values.raw_note || null,
+          published_quote_id: isUpdateFlow ? quoteId : null,
         },
       });
+
+      if (allowSubmissionTags && existingTags.length > 0) {
+        const valuesSql = existingTags.map((tag) => Prisma.sql`(${submission.id}, ${tag.id})`);
+        await tx.$executeRaw(
+          Prisma.sql`
+            INSERT INTO "submission_tags" ("submission_id", "tag_id")
+            VALUES ${Prisma.join(valuesSql)}
+            ON CONFLICT ("submission_id", "tag_id") DO NOTHING
+          `,
+        );
+      }
 
       if (values.evidence_url) {
         await tx.submissionEvidence.create({
@@ -108,6 +157,23 @@ export async function submitQuoteAction(_prevState: SubmitFormState, formData: F
       }
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "QUOTE_NOT_FOUND") {
+      return {
+        formError: "当前条目不存在或已被删除，请返回详情页重试。",
+        fieldErrors: {},
+        values,
+      };
+    }
+    if (error instanceof Error && error.message === "MULTIPLE_LEARNING_TAGS") {
+      return {
+        formError: "学习难度只能选择一个。",
+        fieldErrors: {
+          tag_ids: "学习难度只能选择一个。",
+        },
+        values,
+      };
+    }
+
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2003") {
         return {
@@ -127,6 +193,19 @@ export async function submitQuoteAction(_prevState: SubmitFormState, formData: F
           values,
         };
       }
+
+      if (
+        error.code === "P2010" &&
+        typeof error.meta?.code === "string" &&
+        error.meta.code === "42P01"
+      ) {
+        return {
+          formError:
+            "数据库缺少最新表结构，请执行数据库迁移（npm run prisma:migrate）后重试。",
+          fieldErrors: {},
+          values,
+        };
+      }
     }
 
     console.error("[submitQuoteAction] failed", error);
@@ -139,6 +218,12 @@ export async function submitQuoteAction(_prevState: SubmitFormState, formData: F
 
   revalidatePath("/me/submissions");
   revalidatePath("/admin/review");
+  revalidatePath("/admin/submissions");
+  revalidatePath("/quotes");
+  if (isUpdateFlow) {
+    revalidatePath(`/quotes/${quoteId}`);
+    redirect(`/quotes/${quoteId}?revision_submitted=1`);
+  }
 
   redirect("/me/submissions?submitted=1");
 }

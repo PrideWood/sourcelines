@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { ReviewSubmitButtons } from "@/components/admin/review-submit-buttons";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,7 +47,7 @@ export default async function AdminSubmissionDetailPage({
   const submission = await getAdminSubmissionById(id);
 
   if (!submission) {
-    notFound();
+    redirect("/admin/submissions?error=not_found");
   }
 
   return (
@@ -54,6 +55,7 @@ export default async function AdminSubmissionDetailPage({
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold">审核详情</h1>
         <p className="text-sm text-muted-foreground">提交时间：{formatDate(submission.created_at)}</p>
+        <p className="text-sm text-muted-foreground">请求类型：{submission.published_quote_id ? "条目修改" : "新投稿"}</p>
       </header>
 
       {query.updated === "1" ? <p className="text-sm text-green-700">审核结果已保存。</p> : null}
@@ -112,6 +114,19 @@ export default async function AdminSubmissionDetailPage({
               <p>{submission.raw_note}</p>
             </div>
           ) : null}
+
+          <div>
+            <p className="text-muted-foreground">投稿标签</p>
+            {submission.submission_tags.length > 0 ? (
+              <div className="mt-1 flex flex-wrap gap-2">
+                {submission.submission_tags.map((item) => (
+                  <Badge key={item.tag.id}>{item.tag.name}</Badge>
+                ))}
+              </div>
+            ) : (
+              <p>未选择标签</p>
+            )}
+          </div>
 
           {submission.review_note ? (
             <div>

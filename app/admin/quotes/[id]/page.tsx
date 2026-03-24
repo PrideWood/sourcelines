@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { difficulty_level, verification_status } from "@prisma/client";
+import { difficulty_level, tag_type, verification_status } from "@prisma/client";
 import { notFound } from "next/navigation";
 
 import { DeleteQuoteButton } from "@/components/admin/delete-quote-button";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { prisma } from "@/lib/prisma";
 import { getAdminQuoteById } from "@/lib/queries";
+import { hasTagSortOrderColumn } from "@/lib/tag-sort-order";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ function getErrorMessage(error: string | undefined) {
   if (error === "missing_required") return "请填写原文与原文语言。";
   if (error === "invalid_verification") return "核验状态无效。";
   if (error === "invalid_difficulty") return "难度等级无效。";
+  if (error === "invalid_learning_tags") return "学习难度标签只能选择一个。";
   if (error === "foreign_key") return "作者、作品或语言关联无效，请检查后重试。";
   if (error === "delete_failed") return "删除失败，请稍后重试。";
   return "保存失败，请稍后重试。";
@@ -32,6 +34,7 @@ export default async function AdminQuoteDetailPage({
 }) {
   const { id } = await params;
   const query = await searchParams;
+  const supportsSortOrder = await hasTagSortOrderColumn();
 
   const [quote, languages, authors, works, tags] = await Promise.all([
     getAdminQuoteById(id),
@@ -42,14 +45,63 @@ export default async function AdminQuoteDetailPage({
     }),
     prisma.author.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.work.findMany({ orderBy: { title: "asc" }, select: { id: true, title: true } }),
-    prisma.tag.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true }, take: 20 }),
+    prisma.tag.findMany({
+      orderBy: [{ tag_type: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, tag_type: true },
+    }),
   ]);
+  if (supportsSortOrder && tags.length > 0) {
+    const sortRows = await prisma.$queryRaw<Array<{ id: string; sort_order: number }>>`
+      SELECT id, sort_order
+      FROM tags
+    `;
+    const sortMap = new Map(sortRows.map((row) => [row.id, Number(row.sort_order ?? 0)]));
+    tags.sort((a, b) => {
+      if (a.tag_type !== b.tag_type) return String(a.tag_type).localeCompare(String(b.tag_type));
+      const aSort = sortMap.get(a.id) ?? 0;
+      const bSort = sortMap.get(b.id) ?? 0;
+      if (aSort !== bSort) return aSort - bSort;
+      return a.name.localeCompare(b.name);
+    });
+  }
 
   if (!quote) {
     notFound();
   }
 
   const errorMessage = getErrorMessage(query.error);
+  const selectedTagIds = new Set(quote.quote_tags.map((item) => item.tag_id));
+  const groupedTags: Record<tag_type, Array<{ id: string; name: string; tag_type: tag_type }>> = {
+    SOURCE: [],
+    THEME: [],
+    LEARNING: [],
+    MOOD: [],
+  };
+
+  for (const tag of tags) {
+    groupedTags[tag.tag_type].push(tag);
+  }
+
+  const learningOrder = new Map([
+    ["A1", 1],
+    ["A2", 2],
+    ["B1", 3],
+    ["B2", 4],
+    ["C1", 5],
+    ["C2", 6],
+  ]);
+  groupedTags.LEARNING.sort((a, b) => {
+    const aOrder = learningOrder.get(a.name.toUpperCase()) ?? 999;
+    const bOrder = learningOrder.get(b.name.toUpperCase()) ?? 999;
+    return aOrder - bOrder;
+  });
+
+  const tagGroupLabel: Record<tag_type, string> = {
+    SOURCE: "来源类型",
+    THEME: "主题",
+    LEARNING: "学习难度",
+    MOOD: "情绪",
+  };
 
   return (
     <div className="space-y-4">
@@ -172,13 +224,33 @@ export default async function AdminQuoteDetailPage({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>标签（首版只读预留）</Label>
-              <p className="text-sm text-muted-foreground">
-                当前已关联：
-                {quote.quote_tags.length > 0 ? quote.quote_tags.map((item) => item.tag.name).join("、") : "无"}
+            <div className="space-y-3">
+              <Label>标签（可多选）</Label>
+              <div className="space-y-3 rounded-md border p-3">
+                {(Object.keys(groupedTags) as tag_type[]).map((group) =>
+                  groupedTags[group].length > 0 ? (
+                    <div className="space-y-2" key={group}>
+                      <p className="text-xs text-muted-foreground">{tagGroupLabel[group]}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {groupedTags[group].map((tag) => (
+                          <label className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm" key={tag.id}>
+                            <input
+                              defaultChecked={selectedTagIds.has(tag.id)}
+                              name="tag_ids"
+                              type={group === "LEARNING" ? "radio" : "checkbox"}
+                              value={tag.id}
+                            />
+                            <span>{tag.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null,
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                当前已关联：{quote.quote_tags.length > 0 ? quote.quote_tags.map((item) => item.tag.name).join("、") : "无"}
               </p>
-              <p className="text-xs text-muted-foreground">可选标签总数（预览）：{tags.length}</p>
             </div>
 
             <div className="flex flex-wrap gap-2">

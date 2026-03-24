@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 const items = [
   { label: "审核队列", href: "/admin/submissions" },
   { label: "管理条目", href: "/admin/quotes" },
+  { label: "标签管理", href: "/admin/tags" },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
