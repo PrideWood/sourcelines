@@ -13,9 +13,9 @@ const buttonVariants = cva(
         ghost: "hover:bg-accent hover:text-accent-foreground",
       },
       size: {
-        default: "h-9 px-4 py-2",
-        sm: "h-8 rounded-md px-3",
-        lg: "h-10 rounded-md px-6",
+        default: "h-11 px-4 py-2 md:h-9",
+        sm: "h-10 rounded-md px-3 md:h-8",
+        lg: "h-11 rounded-md px-6 md:h-10",
       },
     },
     defaultVariants: {

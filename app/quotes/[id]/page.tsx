@@ -40,7 +40,7 @@ export default async function QuoteDetailPage({
 
       <Card>
         <CardContent className="pt-6">
-          <div className="flex justify-end">
+          <div className="hidden justify-end md:flex">
             <FavoriteToggleButton initialFavorited={Boolean(quote.favorites && quote.favorites.length > 0)} quoteId={quote.id} />
           </div>
 
@@ -86,13 +86,17 @@ export default async function QuoteDetailPage({
             </div>
           </dl>
 
-          <div className="mt-8 space-y-3">
-            <div className="flex flex-wrap gap-2">
+          <div className="relative z-10 mt-8 space-y-3">
+            <div className="flex flex-wrap gap-2 pointer-events-auto">
+              <div className="md:hidden">
+                <FavoriteToggleButton
+                  initialFavorited={Boolean(quote.favorites && quote.favorites.length > 0)}
+                  quoteId={quote.id}
+                  withLabel
+                />
+              </div>
               <SharePosterButton
-                authorName={quote.author?.name ?? null}
-                originalText={quote.original_text}
-                translationText={quote.translation_text}
-                workTitle={quote.work?.title ?? null}
+                quoteId={quote.id}
               />
               <Link className={buttonVariants({ variant: "outline" })} href={`/submit?quoteId=${quote.id}`}>
                 补充来源信息

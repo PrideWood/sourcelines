@@ -35,6 +35,63 @@ export async function getHomeQuotesForUser(limit = 6, userId: string | null) {
   }
 }
 
+function getDayKey(timeZone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function stableHash(input: string) {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+export async function getDailyQuoteForUser(userId: string | null, timeZone = "Asia/Shanghai") {
+  try {
+    const total = await prisma.quote.count();
+    if (total === 0) {
+      return null;
+    }
+
+    const dayKey = getDayKey(timeZone);
+    const index = stableHash(dayKey) % total;
+
+    const quotes = await prisma.quote.findMany({
+      orderBy: [{ created_at: "asc" }, { id: "asc" }],
+      skip: index,
+      take: 1,
+      include: {
+        author: true,
+        work: true,
+        ...(userId
+          ? {
+              favorites: {
+                where: { user_id: userId },
+                select: { user_id: true },
+              },
+            }
+          : {}),
+        quote_tags: {
+          include: {
+            tag: true,
+          },
+        },
+      },
+    });
+
+    return quotes[0] ?? null;
+  } catch (error) {
+    console.error("[queries] getDailyQuoteForUser failed", error);
+    return null;
+  }
+}
+
 export async function getQuotesList() {
   return getQuotesListForUser(null);
 }

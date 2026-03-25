@@ -5,14 +5,17 @@ import { useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { toggleFavoriteAction } from "@/app/actions/favorites";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function FavoriteToggleButton({
   quoteId,
   initialFavorited,
+  withLabel = false,
 }: {
   quoteId: string;
   initialFavorited: boolean;
+  withLabel?: boolean;
 }) {
   const [isFavorited, setIsFavorited] = useState(initialFavorited);
   const [isPending, startTransition] = useTransition();
@@ -33,14 +36,20 @@ export function FavoriteToggleButton({
     <button
       aria-label={ariaLabel}
       className={cn(
-        "inline-flex h-9 w-9 items-center justify-center transition-colors",
-        isFavorited
-          ? "text-yellow-500"
-          : "text-muted-foreground hover:text-accent-foreground",
+        withLabel
+          ? buttonVariants({ variant: "outline" })
+          : "inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors md:h-9 md:w-9",
+        withLabel ? "gap-2" : "",
+        isFavorited ? "text-yellow-500" : "text-muted-foreground hover:text-accent-foreground",
         isPending && "cursor-not-allowed opacity-70",
       )}
       disabled={isPending}
-      onClick={() => {
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+
         const previous = isFavorited;
         const optimistic = !previous;
         setIsFavorited(optimistic);
@@ -66,6 +75,7 @@ export function FavoriteToggleButton({
         fill={isFavorited ? "currentColor" : "none"}
         strokeWidth={2}
       />
+      {withLabel ? <span>{isPending ? "收藏中" : "收藏"}</span> : null}
     </button>
   );
 }

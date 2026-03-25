@@ -4,6 +4,7 @@ import { setSessionCookie } from "@/lib/auth/cookie";
 import { verifyPassword } from "@/lib/auth/password";
 import { prisma } from "@/lib/prisma";
 import { signSessionToken } from "@/lib/auth/token";
+import { toAbsoluteUrl } from "@/lib/http/request-url";
 
 function safeRedirectPath(nextValue: string | null) {
   if (!nextValue || !nextValue.startsWith("/")) {
@@ -24,19 +25,19 @@ export async function POST(request: Request) {
   const next = safeRedirectPath(String(formData.get("next") ?? ""));
 
   if (!email || !password) {
-    return NextResponse.redirect(new URL(`/login?error=missing_fields&next=${encodeURIComponent(next)}`, request.url), 303);
+    return NextResponse.redirect(toAbsoluteUrl(request, `/login?error=missing_fields&next=${encodeURIComponent(next)}`), 303);
   }
 
   const user = await prisma.user.findUnique({ where: { email } });
 
   if (!user) {
-    return NextResponse.redirect(new URL(`/login?error=invalid_credentials&next=${encodeURIComponent(next)}`, request.url), 303);
+    return NextResponse.redirect(toAbsoluteUrl(request, `/login?error=invalid_credentials&next=${encodeURIComponent(next)}`), 303);
   }
 
   const valid = await verifyPassword(password, user.password_hash);
 
   if (!valid) {
-    return NextResponse.redirect(new URL(`/login?error=invalid_credentials&next=${encodeURIComponent(next)}`, request.url), 303);
+    return NextResponse.redirect(toAbsoluteUrl(request, `/login?error=invalid_credentials&next=${encodeURIComponent(next)}`), 303);
   }
 
   const token = await signSessionToken({
@@ -47,5 +48,5 @@ export async function POST(request: Request) {
   });
 
   await setSessionCookie(token);
-  return NextResponse.redirect(new URL(next, request.url), 303);
+  return NextResponse.redirect(toAbsoluteUrl(request, next), 303);
 }
