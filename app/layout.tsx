@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { Analytics } from "@vercel/analytics/next";
 
 import "./globals.css";
 
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="container flex-1 py-5 pb-[calc(6rem+env(safe-area-inset-bottom))] md:py-10 md:pb-10">{children}</main>
           <SiteFooter />
         </div>
+        <Analytics />
       </body>
     </html>
   );

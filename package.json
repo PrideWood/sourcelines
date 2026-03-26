@@ -22,6 +22,7 @@
     "@fontsource/noto-serif-sc": "^5.2.8",
     "@prisma/client": "^6.17.1",
     "@radix-ui/react-label": "^2.1.7",
+    "@vercel/analytics": "^2.0.1",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
