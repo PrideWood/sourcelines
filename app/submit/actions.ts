@@ -1,7 +1,7 @@
 "use server";
 
-import { Prisma } from "@prisma/client";
-import { revalidatePath } from "next/cache";
+import { Prisma, evidence_upload_status } from "@prisma/client";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 
 import type { SubmitFormState, SubmitFieldErrors } from "@/app/submit/form-state";
@@ -30,10 +30,11 @@ export async function submitQuoteAction(_prevState: SubmitFormState, formData: F
       .getAll("tag_ids")
       .map((item) => String(item).trim())
       .filter((item) => item.length > 0),
+    uploaded_evidence_ids: formData
+      .getAll("uploaded_evidence_ids")
+      .map((item) => String(item).trim())
+      .filter((item) => item.length > 0),
   };
-
-  const evidenceFile = formData.get("evidence_file");
-  const hasEvidenceFile = evidenceFile instanceof File && evidenceFile.size > 0;
 
   const fieldErrors: SubmitFieldErrors = {};
 
@@ -46,8 +47,12 @@ export async function submitQuoteAction(_prevState: SubmitFormState, formData: F
 
   const isUpdateFlow = quoteId.length > 0;
 
-  if (!isUpdateFlow && !values.evidence_url && !hasEvidenceFile) {
-    fieldErrors.evidence = "请提供证据链接，或上传一个证据文件。";
+  if (!isUpdateFlow && !values.evidence_url && values.uploaded_evidence_ids.length === 0) {
+    fieldErrors.evidence = "请提供证据链接，或上传至少一张证据图片。";
+  }
+
+  if (values.uploaded_evidence_ids.length > 3) {
+    fieldErrors.evidence = "证据图片最多 3 张。";
   }
 
   if (values.evidence_url) {
@@ -143,15 +148,41 @@ export async function submitQuoteAction(_prevState: SubmitFormState, formData: F
         });
       }
 
-      if (hasEvidenceFile) {
-        const file = evidenceFile;
+      if (values.uploaded_evidence_ids.length > 0) {
+        const uploads = await tx.pendingEvidenceUpload.findMany({
+          where: {
+            id: { in: values.uploaded_evidence_ids },
+            user_id: session.user.id,
+            status: evidence_upload_status.UPLOADED,
+          },
+        });
 
-        await tx.submissionEvidence.create({
-          data: {
+        if (uploads.length !== values.uploaded_evidence_ids.length) {
+          throw new Error("INVALID_EVIDENCE_UPLOADS");
+        }
+
+        await tx.submissionEvidence.createMany({
+          data: uploads.map((upload) => ({
             submission_id: submission.id,
-            evidence_type: "OTHER",
-            title: file.name || "用户上传文件",
-            note: `占位文件证据：${file.name || "未命名文件"} (${file.size} bytes)`,
+            evidence_type: "IMAGE",
+            title: "用户上传证据图片",
+            object_key: upload.object_key,
+            filename: upload.filename,
+            mime_type: upload.mime_type,
+            file_size: upload.size,
+            uploaded_by_user_id: session.user.id,
+          })),
+        });
+
+        await tx.pendingEvidenceUpload.updateMany({
+          where: {
+            id: { in: uploads.map((upload) => upload.id) },
+            user_id: session.user.id,
+            status: evidence_upload_status.UPLOADED,
+          },
+          data: {
+            status: evidence_upload_status.CONSUMED,
+            consumed_at: new Date(),
           },
         });
       }
@@ -169,6 +200,15 @@ export async function submitQuoteAction(_prevState: SubmitFormState, formData: F
         formError: "学习难度只能选择一个。",
         fieldErrors: {
           tag_ids: "学习难度只能选择一个。",
+        },
+        values,
+      };
+    }
+    if (error instanceof Error && error.message === "INVALID_EVIDENCE_UPLOADS") {
+      return {
+        formError: "证据图片状态异常，请重新上传后再提交。",
+        fieldErrors: {
+          evidence: "证据图片状态异常，请重新上传。",
         },
         values,
       };
@@ -220,6 +260,7 @@ export async function submitQuoteAction(_prevState: SubmitFormState, formData: F
   revalidatePath("/admin/review");
   revalidatePath("/admin/submissions");
   revalidatePath("/quotes");
+  revalidateTag(`submissions:${session.user.id}`, "max");
   if (isUpdateFlow) {
     revalidatePath(`/quotes/${quoteId}`);
     redirect(`/quotes/${quoteId}?revision_submitted=1`);

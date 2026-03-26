@@ -10,12 +10,16 @@
     "lint": "eslint .",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "cleanup:evidence": "node scripts/cleanup-stale-evidence-uploads.mjs"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1017.0",
+    "@aws-sdk/s3-request-presigner": "^3.1017.0",
+    "@fontsource/noto-serif-sc": "^5.2.8",
     "@prisma/client": "^6.17.1",
     "@radix-ui/react-label": "^2.1.7",
     "bcryptjs": "^3.0.3",

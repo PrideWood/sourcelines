@@ -1,6 +1,57 @@
+import { unstable_cache } from "next/cache";
 import { difficulty_level, verification_status } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { hasSubmissionTagsTable } from "@/lib/submission-tags";
+
+export type BrowseQuoteFilters = {
+  q?: string;
+  language?: string;
+  verificationStatus?: string;
+  difficultyLevel?: string;
+  translated?: "yes" | "no";
+  tagSlug?: string;
+};
+
+function buildBrowseQuoteWhere(filters?: BrowseQuoteFilters) {
+  const verification = filters?.verificationStatus;
+  const difficulty = filters?.difficultyLevel;
+  const q = filters?.q?.trim() ?? "";
+
+  return {
+    ...(filters?.language ? { original_language: filters.language } : {}),
+    ...(verification && Object.values(verification_status).includes(verification as verification_status)
+      ? { verification_status: verification as verification_status }
+      : {}),
+    ...(difficulty && Object.values(difficulty_level).includes(difficulty as difficulty_level)
+      ? { difficulty_level: difficulty as difficulty_level }
+      : {}),
+    ...(filters?.translated === "yes" ? { translation_text: { not: null } } : {}),
+    ...(filters?.translated === "no" ? { translation_text: null } : {}),
+    ...(filters?.tagSlug
+      ? {
+          quote_tags: {
+            some: {
+              tag: {
+                slug: filters.tagSlug,
+              },
+            },
+          },
+        }
+      : {}),
+    ...(q
+      ? {
+          OR: [
+            { original_text: { contains: q, mode: "insensitive" as const } },
+            { translation_text: { contains: q, mode: "insensitive" as const } },
+            { source_locator: { contains: q, mode: "insensitive" as const } },
+            { source_title: { contains: q, mode: "insensitive" as const } },
+            { author: { is: { name: { contains: q, mode: "insensitive" as const } } } },
+            { work: { is: { title: { contains: q, mode: "insensitive" as const } } } },
+          ],
+        }
+      : {}),
+  };
+}
 
 export async function getHomeQuotes(limit = 6) {
   return getHomeQuotesForUser(limit, null);
@@ -52,20 +103,42 @@ function stableHash(input: string) {
   return hash;
 }
 
+function getDailyQuoteIdCache(dayKey: string, timeZone: string) {
+  return unstable_cache(
+    async () => {
+      const total = await prisma.quote.count();
+      if (total === 0) {
+        return null;
+      }
+
+      const index = stableHash(dayKey) % total;
+      const quote = await prisma.quote.findFirst({
+        orderBy: [{ created_at: "asc" }, { id: "asc" }],
+        skip: index,
+        select: { id: true },
+      });
+
+      return quote?.id ?? null;
+    },
+    [`daily-quote-id:${timeZone}:${dayKey}`],
+    {
+      revalidate: 300,
+      tags: [`daily-quote:${timeZone}:${dayKey}`],
+    },
+  );
+}
+
 export async function getDailyQuoteForUser(userId: string | null, timeZone = "Asia/Shanghai") {
   try {
-    const total = await prisma.quote.count();
-    if (total === 0) {
+    const dayKey = getDayKey(timeZone);
+    const quoteId = await getDailyQuoteIdCache(dayKey, timeZone)();
+
+    if (quoteId == null) {
       return null;
     }
 
-    const dayKey = getDayKey(timeZone);
-    const index = stableHash(dayKey) % total;
-
-    const quotes = await prisma.quote.findMany({
-      orderBy: [{ created_at: "asc" }, { id: "asc" }],
-      skip: index,
-      take: 1,
+    const quote = await prisma.quote.findUnique({
+      where: { id: quoteId },
       include: {
         author: true,
         work: true,
@@ -85,7 +158,7 @@ export async function getDailyQuoteForUser(userId: string | null, timeZone = "As
       },
     });
 
-    return quotes[0] ?? null;
+    return quote;
   } catch (error) {
     console.error("[queries] getDailyQuoteForUser failed", error);
     return null;
@@ -98,41 +171,11 @@ export async function getQuotesList() {
 
 export async function getQuotesListForUser(
   userId: string | null,
-  filters?: {
-    language?: string;
-    verificationStatus?: string;
-    difficultyLevel?: string;
-    translated?: "yes" | "no";
-    tagSlug?: string;
-  },
+  filters?: BrowseQuoteFilters,
 ) {
   try {
-    const verification = filters?.verificationStatus;
-    const difficulty = filters?.difficultyLevel;
-
     return await prisma.quote.findMany({
-      where: {
-        ...(filters?.language ? { original_language: filters.language } : {}),
-        ...(verification && Object.values(verification_status).includes(verification as verification_status)
-          ? { verification_status: verification as verification_status }
-          : {}),
-        ...(difficulty && Object.values(difficulty_level).includes(difficulty as difficulty_level)
-          ? { difficulty_level: difficulty as difficulty_level }
-          : {}),
-        ...(filters?.translated === "yes" ? { translation_text: { not: null } } : {}),
-        ...(filters?.translated === "no" ? { translation_text: null } : {}),
-        ...(filters?.tagSlug
-          ? {
-              quote_tags: {
-                some: {
-                  tag: {
-                    slug: filters.tagSlug,
-                  },
-                },
-              },
-            }
-          : {}),
-      },
+      where: buildBrowseQuoteWhere(filters),
       orderBy: { created_at: "desc" },
       include: {
         author: true,
@@ -155,6 +198,57 @@ export async function getQuotesListForUser(
   } catch (error) {
     console.error("[queries] getQuotesListForUser failed", error);
     return [];
+  }
+}
+
+export async function getBrowseQuotesPageForUser(
+  userId: string | null,
+  filters: BrowseQuoteFilters,
+  pagination?: {
+    offset?: number;
+    limit?: number;
+  },
+) {
+  const offset = Math.max(0, pagination?.offset ?? 0);
+  const limit = Math.min(Math.max(1, pagination?.limit ?? 12), 20);
+
+  try {
+    const quotes = await prisma.quote.findMany({
+      where: buildBrowseQuoteWhere(filters),
+      orderBy: { created_at: "desc" },
+      skip: offset,
+      take: limit + 1,
+      include: {
+        author: true,
+        work: true,
+        ...(userId
+          ? {
+              favorites: {
+                where: { user_id: userId },
+                select: { user_id: true },
+              },
+            }
+          : {}),
+        quote_tags: {
+          include: {
+            tag: true,
+          },
+        },
+      },
+    });
+
+    return {
+      items: quotes.slice(0, limit),
+      hasMore: quotes.length > limit,
+      nextOffset: offset + Math.min(quotes.length, limit),
+    };
+  } catch (error) {
+    console.error("[queries] getBrowseQuotesPageForUser failed", error);
+    return {
+      items: [],
+      hasMore: false,
+      nextOffset: offset,
+    };
   }
 }
 
@@ -193,27 +287,37 @@ export async function getQuoteByIdForUser(id: string, userId: string | null) {
 
 export async function getFavoritesByUserId(userId: string) {
   try {
-    return await prisma.favorite.findMany({
-      where: { user_id: userId },
-      orderBy: { created_at: "desc" },
-      include: {
-        quote: {
+    const getCachedFavorites = unstable_cache(
+      async () =>
+        prisma.favorite.findMany({
+          where: { user_id: userId },
+          orderBy: { created_at: "desc" },
           include: {
-            author: true,
-            work: true,
-            quote_tags: {
+            quote: {
               include: {
-                tag: true,
+                author: true,
+                work: true,
+                quote_tags: {
+                  include: {
+                    tag: true,
+                  },
+                },
+                favorites: {
+                  where: { user_id: userId },
+                  select: { user_id: true },
+                },
               },
             },
-            favorites: {
-              where: { user_id: userId },
-              select: { user_id: true },
-            },
           },
-        },
+        }),
+      [`favorites-by-user:${userId}`],
+      {
+        revalidate: 20,
+        tags: [`favorites:${userId}`],
       },
-    });
+    );
+
+    return await getCachedFavorites();
   } catch (error) {
     console.error("[queries] getFavoritesByUserId failed", error);
     return [];
@@ -222,21 +326,57 @@ export async function getFavoritesByUserId(userId: string) {
 
 export async function getSubmissionsByUserId(userId: string) {
   try {
-    return await prisma.submission.findMany({
-      where: { submitter_id: userId },
-      orderBy: { created_at: "desc" },
-      include: {
-        original_language_ref: true,
-        _count: {
-          select: {
-            submission_evidences: true,
+    const getCachedSubmissions = unstable_cache(
+      async () =>
+        prisma.submission.findMany({
+          where: { submitter_id: userId },
+          orderBy: { created_at: "desc" },
+          include: {
+            original_language_ref: true,
+            _count: {
+              select: {
+                submission_evidences: true,
+              },
+            },
           },
-        },
+        }),
+      [`submissions-by-user:${userId}`],
+      {
+        revalidate: 20,
+        tags: [`submissions:${userId}`],
       },
-    });
+    );
+
+    return await getCachedSubmissions();
   } catch (error) {
     console.error("[queries] getSubmissionsByUserId failed", error);
     return [];
+  }
+}
+
+export async function getAccountUserById(userId: string) {
+  try {
+    const getCachedAccountUser = unstable_cache(
+      async () =>
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            email: true,
+            display_name: true,
+            role: true,
+          },
+        }),
+      [`account-user:${userId}`],
+      {
+        revalidate: 30,
+        tags: [`account:${userId}`],
+      },
+    );
+
+    return await getCachedAccountUser();
+  } catch (error) {
+    console.error("[queries] getAccountUserById failed", error);
+    return null;
   }
 }
 

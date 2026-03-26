@@ -29,8 +29,8 @@ export default async function QuoteDetailPage({
   }
 
   return (
-    <article className="mx-auto max-w-3xl space-y-6">
-      <div className="space-y-2">
+    <article className="mx-auto max-w-3xl space-y-6 sm:space-y-7 md:space-y-8">
+      <div className="space-y-2 sm:space-y-2.5">
         <h1 className="text-2xl font-semibold">引文详情</h1>
         <p className="text-sm text-muted-foreground">作者：{quote.author?.name ?? "未知作者"}</p>
         {query.revision_submitted === "1" ? (
@@ -39,11 +39,7 @@ export default async function QuoteDetailPage({
       </div>
 
       <Card>
-        <CardContent className="pt-6">
-          <div className="hidden justify-end md:flex">
-            <FavoriteToggleButton initialFavorited={Boolean(quote.favorites && quote.favorites.length > 0)} quoteId={quote.id} />
-          </div>
-
+        <CardContent className="pt-6 sm:pt-7 md:pt-8">
           <blockquote className="reading-quote">“{quote.original_text}”</blockquote>
           {quote.translation_text ? <p className="reading-secondary">{quote.translation_text}</p> : null}
 
@@ -87,14 +83,12 @@ export default async function QuoteDetailPage({
           </dl>
 
           <div className="relative z-10 mt-8 space-y-3">
-            <div className="flex flex-wrap gap-2 pointer-events-auto">
-              <div className="md:hidden">
-                <FavoriteToggleButton
-                  initialFavorited={Boolean(quote.favorites && quote.favorites.length > 0)}
-                  quoteId={quote.id}
-                  withLabel
-                />
-              </div>
+            <div className="pointer-events-auto flex flex-wrap gap-2">
+              <FavoriteToggleButton
+                initialFavorited={Boolean(quote.favorites && quote.favorites.length > 0)}
+                quoteId={quote.id}
+                withLabel
+              />
               <SharePosterButton
                 quoteId={quote.id}
               />

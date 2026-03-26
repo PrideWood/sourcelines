@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
@@ -5,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FavoriteToggleButton } from "@/components/quotes/favorite-toggle-button";
 import { formatTagLabel } from "@/lib/tag-display";
 
-type QuoteCardData = {
+export type QuoteCardData = {
   id: string;
   original_text: string;
   translation_text: string | null;
@@ -44,16 +46,16 @@ export function QuoteCard({
         className="absolute inset-0 z-10 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         href={`/quotes/${quote.id}`}
       />
-      <CardHeader className="relative z-20 pointer-events-none pb-2 md:pb-4">
-        <div className="flex items-start justify-between gap-3">
-          <CardTitle className="line-clamp-1 text-[0.95rem] leading-6 md:text-base">{quote.author?.name ?? "未知作者"}</CardTitle>
-          <div className="flex items-center gap-2">
+      <CardHeader className="pointer-events-none relative z-20 pb-2 md:pb-4">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+          <CardTitle className="min-w-0 line-clamp-1 text-[0.95rem] leading-6 md:text-base">{quote.author?.name ?? "未知作者"}</CardTitle>
+          <div className="flex shrink-0 items-center gap-2 self-center">
             {showFavorite ? (
               <div className="pointer-events-auto">
                 <FavoriteToggleButton initialFavorited={isFavorited} quoteId={quote.id} />
               </div>
             ) : null}
-            <Badge className="shrink-0">{quote.original_language.toUpperCase()}</Badge>
+            <Badge className="h-8 shrink-0 rounded-md px-2.5">{quote.original_language.toUpperCase()}</Badge>
           </div>
         </div>
       </CardHeader>

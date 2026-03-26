@@ -24,6 +24,7 @@ export type SubmitFormState = {
     raw_note: string;
     evidence_url: string;
     tag_ids: string[];
+    uploaded_evidence_ids: string[];
   };
 };
 
@@ -41,5 +42,6 @@ export const initialSubmitFormState: SubmitFormState = {
     raw_note: "",
     evidence_url: "",
     tag_ids: [],
+    uploaded_evidence_ids: [],
   },
 };

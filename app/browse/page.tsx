@@ -2,15 +2,16 @@ import Link from "next/link";
 import { difficulty_level, tag_type, verification_status } from "@prisma/client";
 import { Search, SlidersHorizontal } from "lucide-react";
 
-import { QuoteCard } from "@/components/quotes/quote-card";
+import { InfiniteQuoteList } from "@/components/quotes/infinite-quote-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
-import { getQuotesListForUser, searchLibrary } from "@/lib/queries";
+import { getBrowseQuotesPageForUser, searchLibrary, type BrowseQuoteFilters } from "@/lib/queries";
 import { hasTagSortOrderColumn } from "@/lib/tag-sort-order";
 
 export const dynamic = "force-dynamic";
+const BROWSE_PAGE_SIZE = 12;
 
 type BrowseParams = {
   q?: string;
@@ -20,6 +21,10 @@ type BrowseParams = {
   tag?: string;
   translated?: string;
 };
+
+type BrowseQuotePage = Awaited<
+  ReturnType<typeof getBrowseQuotesPageForUser>
+>;
 
 function chipClass(active: boolean) {
   return active
@@ -167,27 +172,52 @@ export default async function BrowsePage({
     translated,
   };
 
-  const [filteredQuotes, languages, themeTags, searchResults] = await Promise.all([
-    getQuotesListForUser(session?.user.id ?? null, {
-      language: language || undefined,
-      verificationStatus: verification || undefined,
-      difficultyLevel: difficulty || undefined,
-      tagSlug: tag || undefined,
-      translated: translated === "" ? undefined : (translated as "yes" | "no"),
-    }),
-    prisma.language.findMany({
-      where: { is_active: true },
-      orderBy: { name_en: "asc" },
-      select: { code: true, name_en: true },
-    }),
-    prisma.tag.findMany({
-      where: { tag_type: tag_type.THEME },
-      orderBy: [{ name: "asc" }],
-      take: 16,
-      select: { slug: true, name: true },
-    }),
-    q ? searchLibrary(q, session?.user.id ?? null) : Promise.resolve(null),
-  ]);
+  let quotePage: BrowseQuotePage = {
+    items: [],
+    hasMore: false,
+    nextOffset: 0,
+  };
+  let languages: Array<{ code: string; name_en: string }> = [];
+  let themeTags: Array<{ slug: string; name: string }> = [];
+  let searchResults: Awaited<ReturnType<typeof searchLibrary>> | null = null;
+  let browseLoadError = false;
+
+  const browseFilters: BrowseQuoteFilters = {
+    q: q || undefined,
+    language: language || undefined,
+    verificationStatus: verification || undefined,
+    difficultyLevel: difficulty || undefined,
+    tagSlug: tag || undefined,
+    translated: translated === "" ? undefined : (translated as "yes" | "no"),
+  };
+
+  try {
+    [quotePage, languages, themeTags, searchResults] = await Promise.all([
+      getBrowseQuotesPageForUser(
+        session?.user.id ?? null,
+        browseFilters,
+        {
+          offset: 0,
+          limit: BROWSE_PAGE_SIZE,
+        },
+      ),
+      prisma.language.findMany({
+        where: { is_active: true },
+        orderBy: { name_en: "asc" },
+        select: { code: true, name_en: true },
+      }),
+      prisma.tag.findMany({
+        where: { tag_type: tag_type.THEME },
+        orderBy: [{ name: "asc" }],
+        take: 16,
+        select: { slug: true, name: true },
+      }),
+      q ? searchLibrary(q, session?.user.id ?? null) : Promise.resolve(null),
+    ]);
+  } catch (error) {
+    browseLoadError = true;
+    console.error("[browse] page load failed", error);
+  }
 
   if (supportsSortOrder && themeTags.length > 0) {
     const sortRows = await prisma.$queryRaw<Array<{ slug: string; sort_order: number }>>`
@@ -204,11 +234,6 @@ export default async function BrowsePage({
     });
   }
 
-  const quotes =
-    q && searchResults
-      ? filteredQuotes.filter((quote) => searchResults.quotes.some((searchQuote) => searchQuote.id === quote.id))
-      : filteredQuotes;
-
   const verificationLabel =
     verification === "VERIFIED" ? "已核验" : verification === "PARTIALLY_VERIFIED" ? "部分核验" : verification === "UNVERIFIED" ? "未核验" : "";
   const translatedLabel = translated === "yes" ? "有译文" : translated === "no" ? "无译文" : "";
@@ -223,14 +248,22 @@ export default async function BrowsePage({
   const activeFilterCount = activeFilterHints.length;
 
   return (
-    <div className="space-y-5">
-      <header className="space-y-1">
+    <div className="space-y-5 sm:space-y-6 md:space-y-7">
+      <header className="space-y-1.5 sm:space-y-2">
         <h1 className="text-2xl font-semibold">浏览</h1>
         <p className="text-sm text-muted-foreground">在同一页面完成看、搜、筛。</p>
       </header>
 
+      {browseLoadError ? (
+        <Card>
+          <CardContent className="pt-5">
+            <p className="text-sm text-muted-foreground">浏览内容暂时无法加载，请稍后刷新重试。</p>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
-        <CardContent className="space-y-4 pt-5">
+        <CardContent className="space-y-4 pt-5 sm:space-y-5 sm:pt-6 md:pt-7">
           <form className="space-y-2" method="get">
             <label className="sr-only" htmlFor="browse-search-input">
               搜索
@@ -296,12 +329,15 @@ export default async function BrowsePage({
         </CardContent>
       </Card>
 
-      <section className="space-y-3">
+      <section className="space-y-3 sm:space-y-4 md:space-y-5">
         <h2 className="text-lg font-semibold">句子</h2>
-        {quotes.length === 0 ? <p className="text-sm text-muted-foreground">没有找到符合条件的句子。</p> : null}
-        {quotes.map((quote) => (
-          <QuoteCard key={quote.id} quote={quote} />
-        ))}
+        <InfiniteQuoteList
+          initialHasMore={quotePage.hasMore}
+          initialItems={quotePage.items}
+          initialNextOffset={quotePage.nextOffset}
+          limit={BROWSE_PAGE_SIZE}
+          params={currentParams}
+        />
       </section>
 
       {q && searchResults ? (

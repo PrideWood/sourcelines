@@ -4,7 +4,6 @@ import { ChevronLeft } from "lucide-react";
 
 import { SharePreviewClient } from "@/components/quotes/share-preview-client";
 import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { getSession } from "@/lib/auth/session";
 import { getQuoteByIdForUser } from "@/lib/queries";
 
@@ -34,13 +33,9 @@ export default async function QuoteSharePage({
         <p className="text-sm text-muted-foreground">长按下方海报即可保存，保存后可在常用应用中发送。</p>
       </header>
 
-      <Card>
-        <CardContent className="space-y-4 p-4 md:p-6">
-          <SharePreviewClient
-            quoteId={quote.id}
-          />
-        </CardContent>
-      </Card>
+      <SharePreviewClient
+        quoteId={quote.id}
+      />
     </article>
   );
 }

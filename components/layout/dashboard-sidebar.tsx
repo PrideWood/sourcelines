@@ -20,7 +20,7 @@ export function DashboardSidebar({
       <ul className="space-y-1">
         {items.map((item) => (
           <li key={item.href}>
-            <Link className={cn("block rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground")} href={item.href}>
+            <Link className={cn("block rounded-md px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground")} href={item.href} prefetch>
               {item.label}
             </Link>
           </li>

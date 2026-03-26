@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 import { clearSessionCookie } from "@/lib/auth/cookie";
 import { getSession } from "@/lib/auth/session";
@@ -41,6 +41,7 @@ export async function toggleFavoriteAction(quoteId: string, nextPath: string): P
     revalidatePath("/quotes");
     revalidatePath(`/quotes/${quoteId}`);
     revalidatePath("/me/favorites");
+    revalidateTag(`favorites:${session.user.id}`, "max");
 
     return {
       ok: true,
@@ -94,6 +95,7 @@ export async function toggleFavoriteAction(quoteId: string, nextPath: string): P
   revalidatePath("/quotes");
   revalidatePath(`/quotes/${quoteId}`);
   revalidatePath("/me/favorites");
+  revalidateTag(`favorites:${session.user.id}`, "max");
 
   return {
     ok: true,

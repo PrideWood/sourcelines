@@ -21,13 +21,13 @@ export async function SiteHeader() {
         <MobileHomeBrandBar />
 
         <div className="container hidden h-16 items-center justify-between border-b border-border/80 bg-background/95 md:flex">
-          <Link className="font-sans text-lg font-semibold tracking-tight" href="/">
+          <Link className="font-sans text-lg font-semibold tracking-tight" href="/" prefetch>
             SourceLines
           </Link>
 
           <nav className="items-center gap-5 md:flex">
             {navItems.map((item) => (
-              <Link key={item.href} className="text-sm text-muted-foreground transition-colors hover:text-foreground" href={item.href}>
+              <Link key={item.href} className="text-sm text-muted-foreground transition-colors hover:text-foreground" href={item.href} prefetch>
                 {item.label}
               </Link>
             ))}
@@ -36,10 +36,10 @@ export async function SiteHeader() {
           {session ? <UserMenu role={session.user.role} userName={session.user.name} /> : null}
           {!session ? (
             <div className="flex items-center gap-2">
-              <Link className={buttonVariants({ size: "sm", variant: "ghost" })} href="/login">
+              <Link className={buttonVariants({ size: "sm", variant: "ghost" })} href="/login" prefetch>
                 登录
               </Link>
-              <Link className={buttonVariants({ size: "sm" })} href="/register">
+              <Link className={buttonVariants({ size: "sm" })} href="/register" prefetch>
                 注册
               </Link>
             </div>

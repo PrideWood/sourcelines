@@ -3,21 +3,14 @@ import { notFound } from "next/navigation";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireAuth } from "@/lib/auth/session";
-import { prisma } from "@/lib/prisma";
+import { getAccountUserById } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountSettingsPage() {
   const session = await requireAuth();
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      email: true,
-      display_name: true,
-      role: true,
-    },
-  });
+  const user = await getAccountUserById(session.user.id);
 
   if (user == null) {
     notFound();

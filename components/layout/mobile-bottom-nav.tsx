@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { Compass, Home, PenSquare, User } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 type MobileBottomNavProps = {
   myHref: string;
@@ -16,6 +17,17 @@ const items = [
 
 export function MobileBottomNav({ myHref }: MobileBottomNavProps) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    // Warm up lightweight pages to reduce tap-to-render delay.
+    router.prefetch("/");
+    router.prefetch("/me");
+    router.prefetch("/submit");
+    router.prefetch("/settings/account");
+    router.prefetch("/me/favorites");
+    router.prefetch("/me/submissions");
+  }, [router]);
 
   const isSharePreviewPath = /^\/quotes\/[^/]+\/share$/.test(pathname);
   if (isSharePreviewPath) {
@@ -62,6 +74,7 @@ export function MobileBottomNav({ myHref }: MobileBottomNavProps) {
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   }`}
                   href={item.href}
+                  prefetch
                 >
                   <Icon className="mb-0.5 h-4 w-4" />
                   <span>{item.label}</span>
@@ -82,6 +95,7 @@ export function MobileBottomNav({ myHref }: MobileBottomNavProps) {
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 }`}
                 href={myHref}
+                prefetch
               >
                 <User className="mb-0.5 h-4 w-4" />
                 <span>我的</span>

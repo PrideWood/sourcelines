@@ -33,10 +33,10 @@ export default async function MePage({
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">{hint}</p>
             <div className="grid grid-cols-1 gap-2">
-              <Link className={buttonVariants()} href={`/login?next=${encodeURIComponent(next)}`}>
+              <Link className={buttonVariants()} href={`/login?next=${encodeURIComponent(next)}`} prefetch>
                 去登录
               </Link>
-              <Link className={buttonVariants({ variant: "outline" })} href={`/register?next=${encodeURIComponent(next)}`}>
+              <Link className={buttonVariants({ variant: "outline" })} href={`/register?next=${encodeURIComponent(next)}`} prefetch>
                 去注册
               </Link>
             </div>
@@ -58,15 +58,15 @@ export default async function MePage({
           <CardTitle className="text-base">账户中心</CardTitle>
         </CardHeader>
         <CardContent className="space-y-1">
-          <Link className="flex h-12 items-center justify-between rounded-md px-3 text-sm hover:bg-accent hover:text-accent-foreground" href="/me/favorites">
+          <Link className="flex h-12 items-center justify-between rounded-md px-3 text-sm hover:bg-accent hover:text-accent-foreground" href="/me/favorites" prefetch>
             <span>我的收藏</span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </Link>
-          <Link className="flex h-12 items-center justify-between rounded-md px-3 text-sm hover:bg-accent hover:text-accent-foreground" href="/me/submissions">
+          <Link className="flex h-12 items-center justify-between rounded-md px-3 text-sm hover:bg-accent hover:text-accent-foreground" href="/me/submissions" prefetch>
             <span>我的投稿</span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </Link>
-          <Link className="flex h-12 items-center justify-between rounded-md px-3 text-sm hover:bg-accent hover:text-accent-foreground" href="/settings/account">
+          <Link className="flex h-12 items-center justify-between rounded-md px-3 text-sm hover:bg-accent hover:text-accent-foreground" href="/settings/account" prefetch>
             <span>账户设置</span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </Link>
