@@ -2,11 +2,16 @@
 
 import { Prisma, evidence_upload_status } from "@prisma/client";
 import { revalidatePath, revalidateTag } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import type { SubmitFormState, SubmitFieldErrors } from "@/app/submit/form-state";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
+import { getRequestIp } from "@/lib/security/request";
+import { enforceRateLimit, RateLimitError } from "@/lib/security/rate-limit";
+import { ensureSubmissionAllowed, SubmissionGuardError, validateSubmissionPayload } from "@/lib/security/submission-guards";
+import { verifyTurnstileToken } from "@/lib/security/turnstile";
 import { ensureSubmissionTagsTable } from "@/lib/submission-tags";
 
 function normalizeText(value: FormDataEntryValue | null) {
@@ -15,6 +20,7 @@ function normalizeText(value: FormDataEntryValue | null) {
 
 export async function submitQuoteAction(_prevState: SubmitFormState, formData: FormData): Promise<SubmitFormState> {
   const quoteId = normalizeText(formData.get("quote_id"));
+  const turnstileToken = normalizeText(formData.get("turnstile_token"));
   const values = {
     original_text: normalizeText(formData.get("original_text")),
     language: normalizeText(formData.get("language")).toLowerCase(),
@@ -78,6 +84,70 @@ export async function submitQuoteAction(_prevState: SubmitFormState, formData: F
 
   if (!session) {
     redirect(`/login?next=${encodeURIComponent("/submit")}`);
+  }
+
+  const requestHeaders = await headers();
+  const ip = getRequestIp(requestHeaders);
+
+  try {
+    await enforceRateLimit({
+      key: quoteId ? `submit:revision:user:${session.user.id}` : `submit:new:user:${session.user.id}`,
+      limit: quoteId ? 4 : 3,
+      windowSeconds: 60 * 60,
+      message: "提交过于频繁，请稍后再试。",
+    });
+    await enforceRateLimit({
+      key: `submit:ip:${ip}`,
+      limit: 10,
+      windowSeconds: 60 * 60,
+      message: "提交过于频繁，请稍后再试。",
+    });
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return {
+        formError: error.message,
+        fieldErrors: {},
+        values,
+      };
+    }
+    throw error;
+  }
+
+  const turnstilePassed = await verifyTurnstileToken({
+    token: turnstileToken,
+    ip,
+  });
+
+  if (!turnstilePassed) {
+    return {
+      formError: "人机验证未通过，请重试。",
+      fieldErrors: {},
+      values,
+    };
+  }
+
+  try {
+    validateSubmissionPayload({
+      originalText: values.original_text,
+      translationText: values.raw_translated_text,
+      note: values.raw_note,
+      sourceLocation: values.raw_source_location,
+    });
+    await ensureSubmissionAllowed({
+      userId: session.user.id,
+      language: values.language,
+      originalText: values.original_text,
+      quoteId: quoteId || undefined,
+    });
+  } catch (error) {
+    if (error instanceof SubmissionGuardError) {
+      return {
+        formError: error.message,
+        fieldErrors: {},
+        values,
+      };
+    }
+    throw error;
   }
 
   const allowSubmissionTags = values.tag_ids.length > 0 ? await ensureSubmissionTagsTable() : false;

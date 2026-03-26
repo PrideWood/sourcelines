@@ -70,15 +70,103 @@ async function loadPosterFontData() {
   return posterFontDataPromise;
 }
 
-function estimateLineCount(text: string, charsPerLine: number) {
+function measureGlyphUnits(character: string) {
+  if (character === "\n") return 0;
+  if (/\s/.test(character)) return 0.28;
+  if (/[A-Z]/.test(character)) return 0.68;
+  if (/[a-z]/.test(character)) return 0.56;
+  if (/[0-9]/.test(character)) return 0.56;
+  if (/[，。、！？；：）】》」』]/.test(character)) return 0.52;
+  if (/[（【《「『]/.test(character)) return 0.64;
+  if (/[.,!?;:'"`-]/.test(character)) return 0.34;
+  return 1;
+}
+
+function estimateWrappedLines(text: string, maxWidth: number, fontSize: number) {
   if (text.trim().length === 0) return 1;
+
   const paragraphs = text.replace(/\r/g, "").split("\n");
   let lines = 0;
+
   for (const paragraph of paragraphs) {
-    const count = Math.max(1, Math.ceil(paragraph.length / charsPerLine));
-    lines += count;
+    if (paragraph.trim().length === 0) {
+      lines += 1;
+      continue;
+    }
+
+    let currentLineWidth = 0;
+    let paragraphLines = 1;
+
+    for (const character of paragraph) {
+      const characterWidth = measureGlyphUnits(character) * fontSize;
+
+      if (currentLineWidth > 0 && currentLineWidth + characterWidth > maxWidth) {
+        paragraphLines += 1;
+        currentLineWidth = characterWidth;
+        continue;
+      }
+
+      currentLineWidth += characterWidth;
+    }
+
+    lines += paragraphLines;
   }
+
   return lines;
+}
+
+function calculatePosterHeight({
+  original,
+  translation,
+  sourceLines,
+}: {
+  original: string;
+  translation: string;
+  sourceLines: string[];
+}) {
+  const contentWidth = 888;
+  const outerPaddingY = 108;
+  const cardPaddingTop = 54;
+  const cardPaddingBottom = 48;
+  const brandHeight = 40;
+  const brandMarginBottom = 44;
+  const originalLineHeight = 54 * 1.35;
+  const translationLineHeight = 36 * 1.4;
+  const sourceLineHeight = 31 * 1.35;
+  const translationMarginTop = translation ? 54 : 0;
+  const separatorMarginTop = 72;
+  const separatorHeight = 1;
+  const sourceMarginTop = 52;
+  const sourceGap = 12;
+  const bottomSafetySpace = 40;
+
+  const originalLines = estimateWrappedLines(original, contentWidth, 54);
+  const translationLines = translation ? estimateWrappedLines(translation, contentWidth, 36) : 0;
+  const resolvedSourceLines = sourceLines.length > 0 ? sourceLines : ["来源信息待补充"];
+  const sourceLineCount = resolvedSourceLines.reduce(
+    (count, line) => count + estimateWrappedLines(line, contentWidth, 31),
+    0,
+  );
+
+  const sourceGaps = Math.max(resolvedSourceLines.length - 1, 0) * sourceGap;
+
+  const calculatedHeight =
+    outerPaddingY +
+    cardPaddingTop +
+    brandHeight +
+    brandMarginBottom +
+    originalLines * originalLineHeight +
+    translationMarginTop +
+    translationLines * translationLineHeight +
+    separatorMarginTop +
+    separatorHeight +
+    sourceMarginTop +
+    sourceLineCount * sourceLineHeight +
+    sourceGaps +
+    cardPaddingBottom +
+    bottomSafetySpace;
+
+  return Math.max(980, Math.ceil(calculatedHeight));
 }
 
 function createPosterMarkup({
@@ -107,12 +195,11 @@ function createPosterMarkup({
       }}
     >
       <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          borderRadius: "22px",
+      style={{
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        borderRadius: "22px",
           border: "1px solid #d9cec0",
           background: "#fffdf9",
           padding: "54px 42px 48px",
@@ -181,11 +268,11 @@ export async function GET(
   const original = quote.original_text ?? "";
   const translation = quote.translation_text ?? "";
   const sourceLines = [quote.author?.name ?? null, quote.work?.title ?? null].filter((item): item is string => Boolean(item));
-
-  const originalLines = estimateLineCount(original, 22);
-  const translationLines = translation ? estimateLineCount(translation, 28) : 0;
-  const sourceLinesCount = Math.max(sourceLines.length, 1);
-  const height = Math.max(980, 360 + originalLines * 52 + translationLines * 44 + sourceLinesCount * 42 + 220);
+  const height = calculatePosterHeight({
+    original,
+    translation,
+    sourceLines,
+  });
 
   const fallbackFonts = posterFontData
     ? [

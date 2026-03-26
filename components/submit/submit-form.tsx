@@ -5,6 +5,7 @@ import { tag_type } from "@prisma/client";
 
 import { submitQuoteAction } from "@/app/submit/actions";
 import { initialSubmitFormState } from "@/app/submit/form-state";
+import { TurnstileWidget } from "@/components/security/turnstile-widget";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -57,10 +58,12 @@ export function SubmitForm({
   languages,
   tags,
   initialValues,
+  turnstileSiteKey,
 }: {
   languages: LanguageOption[];
   tags: TagOption[];
   initialValues?: SubmitInitialValues | null;
+  turnstileSiteKey?: string;
 }) {
   const [state, formAction, isPending] = useActionState(submitQuoteAction, initialSubmitFormState);
   const [uploadStatus, setUploadStatus] = useState("");
@@ -448,6 +451,8 @@ export function SubmitForm({
 
             <FieldError message={state.fieldErrors.evidence} />
           </div>
+
+          <TurnstileWidget action={initialValues?.quote_id ? "submit-revision" : "submit-quote"} siteKey={turnstileSiteKey ?? ""} />
 
           <Button disabled={isPending} type="submit">
             {isPending ? "提交中..." : "提交审核"}

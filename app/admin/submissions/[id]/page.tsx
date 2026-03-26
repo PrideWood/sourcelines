@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { reviewSubmissionAction } from "@/app/admin/submissions/actions";
 import { getAdminSubmissionById } from "@/lib/queries";
 import { getPresignedGetUrl } from "@/lib/r2";
+import { getSubmitterAbuseSummary } from "@/lib/security/submission-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,7 @@ export default async function AdminSubmissionDetailPage({
     }),
   );
   const evidenceImageUrlMap = new Map(evidenceImageUrlEntries);
+  const submitterSummary = await getSubmitterAbuseSummary(submission.submitter.id);
 
   return (
     <div className="space-y-4">
@@ -115,12 +117,20 @@ export default async function AdminSubmissionDetailPage({
               </dd>
             </div>
             <div>
+              <dt className="text-muted-foreground">该用户待审核量</dt>
+              <dd>{submitterSummary.pendingCount}</dd>
+            </div>
+            <div>
               <dt className="text-muted-foreground">出处位置</dt>
               <dd>{submission.source_locator ?? "未填写"}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">核验状态</dt>
               <dd>{verificationText[submission.verification_status]}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">近 24 小时提交数</dt>
+              <dd>{submitterSummary.recentCount}</dd>
             </div>
           </dl>
 

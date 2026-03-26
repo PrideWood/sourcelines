@@ -247,6 +247,17 @@ model PendingEvidenceUpload {
   @@map("pending_evidence_uploads")
 }
 
+model RateLimitBucket {
+  key          String   @id
+  count        Int      @default(0)
+  window_start DateTime
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([window_start])
+  @@map("rate_limit_buckets")
+}
+
 model Favorite {
   user_id    String
   quote_id   String

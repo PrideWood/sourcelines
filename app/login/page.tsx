@@ -1,13 +1,17 @@
 import Link from "next/link";
 
+import { TurnstileWidget } from "@/components/security/turnstile-widget";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getTurnstileSiteKey } from "@/lib/security/turnstile";
 
 function getErrorMessage(error: string | undefined) {
   if (error === "invalid_credentials") return "邮箱或密码错误。";
   if (error === "missing_fields") return "请填写邮箱和密码。";
+  if (error === "turnstile_failed") return "人机验证未通过，请重试。";
+  if (error === "rate_limited") return "请求过于频繁，请稍后再试。";
   return "";
 }
 
@@ -19,6 +23,7 @@ export default async function LoginPage({
   const params = await searchParams;
   const errorMessage = getErrorMessage(params.error);
   const next = params.next && params.next.startsWith("/") ? params.next : "/";
+  const turnstileSiteKey = getTurnstileSiteKey();
 
   return (
     <div className="mx-auto max-w-md">
@@ -38,6 +43,7 @@ export default async function LoginPage({
               <Label htmlFor="password">密码</Label>
               <Input id="password" name="password" type="password" />
             </div>
+            <TurnstileWidget action="login" siteKey={turnstileSiteKey} />
             <Button className="w-full" type="submit">
               登录
             </Button>

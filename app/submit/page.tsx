@@ -1,5 +1,6 @@
 import { SubmitForm } from "@/components/submit/submit-form";
 import { prisma } from "@/lib/prisma";
+import { getTurnstileSiteKey } from "@/lib/security/turnstile";
 import { hasTagSortOrderColumn } from "@/lib/tag-sort-order";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ export default async function SubmitPage({
   const params = await searchParams;
   const quoteId = params.quoteId?.trim() || "";
   const supportsSortOrder = await hasTagSortOrderColumn();
+  const turnstileSiteKey = getTurnstileSiteKey();
 
   const [languages, tags, quote] = await Promise.all([
     prisma.language.findMany({
@@ -86,7 +88,7 @@ export default async function SubmitPage({
         </p>
       </header>
 
-      <SubmitForm initialValues={prefill} languages={languages} tags={tags} />
+      <SubmitForm initialValues={prefill} languages={languages} tags={tags} turnstileSiteKey={turnstileSiteKey} />
     </div>
   );
 }

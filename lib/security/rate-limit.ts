@@ -1,0 +1,110 @@
+import { prisma } from "@/lib/prisma";
+
+export class RateLimitError extends Error {
+  retryAfterSeconds: number;
+
+  constructor(message: string, retryAfterSeconds: number) {
+    super(message);
+    this.name = "RateLimitError";
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+export async function enforceRateLimit({
+  key,
+  limit,
+  windowSeconds,
+  message = "请求过于频繁，请稍后再试。",
+}: {
+  key: string;
+  limit: number;
+  windowSeconds: number;
+  message?: string;
+}) {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - windowSeconds * 1000);
+
+  const hasRateLimitDelegate =
+    typeof prisma === "object" &&
+    prisma != null &&
+    "rateLimitBucket" in prisma &&
+    typeof (prisma as { rateLimitBucket?: unknown }).rateLimitBucket === "object" &&
+    (prisma as { rateLimitBucket?: unknown }).rateLimitBucket != null;
+
+  // Fail open if the generated Prisma client or migrated database is not ready yet.
+  // Abuse protection should not take the main submission/auth flow down.
+  if (!hasRateLimitDelegate) {
+    return;
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const rateLimitBucket = (tx as typeof tx & {
+      rateLimitBucket?: {
+        findUnique: typeof prisma.rateLimitBucket.findUnique;
+        upsert: typeof prisma.rateLimitBucket.upsert;
+        update: typeof prisma.rateLimitBucket.update;
+      };
+    }).rateLimitBucket;
+
+    if (!rateLimitBucket) {
+      return {
+        allowed: true,
+        retryAfterSeconds: 0,
+      };
+    }
+
+    const current = await rateLimitBucket.findUnique({
+      where: { key },
+    });
+
+    if (!current || current.window_start < windowStart) {
+      await rateLimitBucket.upsert({
+        where: { key },
+        update: {
+          count: 1,
+          window_start: now,
+        },
+        create: {
+          key,
+          count: 1,
+          window_start: now,
+        },
+      });
+
+      return {
+        allowed: true,
+        retryAfterSeconds: 0,
+      };
+    }
+
+    if (current.count >= limit) {
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((current.window_start.getTime() + windowSeconds * 1000 - now.getTime()) / 1000),
+      );
+
+      return {
+        allowed: false,
+        retryAfterSeconds,
+      };
+    }
+
+    await rateLimitBucket.update({
+      where: { key },
+      data: {
+        count: {
+          increment: 1,
+        },
+      },
+    });
+
+    return {
+      allowed: true,
+      retryAfterSeconds: 0,
+    };
+  });
+
+  if (!result.allowed) {
+    throw new RateLimitError(message, result.retryAfterSeconds);
+  }
+}
