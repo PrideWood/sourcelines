@@ -36,6 +36,10 @@ export class RateLimitError extends Error {
   }
 }
 
+function isDatabaseRateLimitEnabled() {
+  return process.env.ENABLE_DB_RATE_LIMIT === "true";
+}
+
 export async function enforceRateLimit({
   key,
   limit,
@@ -47,6 +51,13 @@ export async function enforceRateLimit({
   windowSeconds: number;
   message?: string;
 }) {
+  // Database-backed rate limiting is temporarily opt-in.
+  // This keeps auth and submission flows available if the runtime database
+  // has not applied the required migration yet.
+  if (!isDatabaseRateLimitEnabled()) {
+    return;
+  }
+
   const now = new Date();
   const windowStart = new Date(now.getTime() - windowSeconds * 1000);
 
@@ -63,33 +74,66 @@ export async function enforceRateLimit({
     return;
   }
 
-  const result = await prisma.$transaction(async (tx) => {
-    const rateLimitBucket = (tx as typeof tx & {
-      rateLimitBucket?: RateLimitBucketDelegate;
-    }).rateLimitBucket;
+  let result: {
+    allowed: boolean;
+    retryAfterSeconds: number;
+  };
 
-    if (!rateLimitBucket) {
-      return {
-        allowed: true,
-        retryAfterSeconds: 0,
-      };
-    }
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const rateLimitBucket = (tx as typeof tx & {
+        rateLimitBucket?: RateLimitBucketDelegate;
+      }).rateLimitBucket;
 
-    const current = await rateLimitBucket.findUnique({
-      where: { key },
-    });
+      if (!rateLimitBucket) {
+        return {
+          allowed: true,
+          retryAfterSeconds: 0,
+        };
+      }
 
-    if (!current || current.window_start < windowStart) {
-      await rateLimitBucket.upsert({
+      const current = await rateLimitBucket.findUnique({
         where: { key },
-        update: {
-          count: 1,
-          window_start: now,
-        },
-        create: {
-          key,
-          count: 1,
-          window_start: now,
+      });
+
+      if (!current || current.window_start < windowStart) {
+        await rateLimitBucket.upsert({
+          where: { key },
+          update: {
+            count: 1,
+            window_start: now,
+          },
+          create: {
+            key,
+            count: 1,
+            window_start: now,
+          },
+        });
+
+        return {
+          allowed: true,
+          retryAfterSeconds: 0,
+        };
+      }
+
+      if (current.count >= limit) {
+        const retryAfterSeconds = Math.max(
+          1,
+          Math.ceil((current.window_start.getTime() + windowSeconds * 1000 - now.getTime()) / 1000),
+        );
+
+        return {
+          allowed: false,
+          retryAfterSeconds,
+        };
+      }
+
+      await rateLimitBucket.update({
+        where: { key },
+        data: {
+          count: {
+            increment: 1,
+          },
         },
       });
 
@@ -97,34 +141,11 @@ export async function enforceRateLimit({
         allowed: true,
         retryAfterSeconds: 0,
       };
-    }
-
-    if (current.count >= limit) {
-      const retryAfterSeconds = Math.max(
-        1,
-        Math.ceil((current.window_start.getTime() + windowSeconds * 1000 - now.getTime()) / 1000),
-      );
-
-      return {
-        allowed: false,
-        retryAfterSeconds,
-      };
-    }
-
-    await rateLimitBucket.update({
-      where: { key },
-      data: {
-        count: {
-          increment: 1,
-        },
-      },
     });
-
-    return {
-      allowed: true,
-      retryAfterSeconds: 0,
-    };
-  });
+  } catch {
+    // Fail open if the database schema or runtime client still doesn't match.
+    return;
+  }
 
   if (!result.allowed) {
     throw new RateLimitError(message, result.retryAfterSeconds);
