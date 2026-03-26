@@ -19,6 +19,7 @@ model User {
   reports              Report[]     @relation("report_reporter")
   reviewed_submissions Submission[] @relation("submission_reviewer")
   submissions          Submission[] @relation("submission_submitter")
+  pending_uploads      PendingEvidenceUpload[]
 
   @@index([created_at])
   @@map("users")
@@ -214,6 +215,11 @@ model SubmissionEvidence {
   url           String?
   excerpt       String?
   note          String?
+  object_key    String?
+  filename      String?
+  mime_type     String?
+  file_size     Int?
+  uploaded_by_user_id String?
   created_at    DateTime      @default(now())
   updated_at    DateTime      @updatedAt
   submission    Submission    @relation(fields: [submission_id], references: [id], onDelete: Cascade)
@@ -221,6 +227,24 @@ model SubmissionEvidence {
   @@index([submission_id])
   @@index([evidence_type])
   @@map("submission_evidences")
+}
+
+model PendingEvidenceUpload {
+  id         String                 @id @default(cuid())
+  user_id    String
+  object_key String                 @unique
+  filename   String
+  mime_type  String
+  size       Int
+  status     evidence_upload_status @default(PENDING)
+  created_at DateTime               @default(now())
+  uploaded_at DateTime?
+  consumed_at DateTime?
+  discarded_at DateTime?
+  user       User                   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, status, created_at])
+  @@map("pending_evidence_uploads")
 }
 
 model Favorite {
@@ -296,7 +320,15 @@ enum evidence_type {
   ARTICLE
   WEBSITE
   ARCHIVE
+  IMAGE
   OTHER
+}
+
+enum evidence_upload_status {
+  PENDING
+  UPLOADED
+  CONSUMED
+  DISCARDED
 }
 
 enum report_status {

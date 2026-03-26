@@ -1,7 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
+import { clearSessionCookie } from "@/lib/auth/cookie";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 
@@ -40,6 +41,7 @@ export async function toggleFavoriteAction(quoteId: string, nextPath: string): P
     revalidatePath("/quotes");
     revalidatePath(`/quotes/${quoteId}`);
     revalidatePath("/me/favorites");
+    revalidateTag(`favorites:${session.user.id}`, "max");
 
     return {
       ok: true,
@@ -56,9 +58,35 @@ export async function toggleFavoriteAction(quoteId: string, nextPath: string): P
       },
     });
   } catch (error) {
+    const code = typeof error === "object" && error != null && "code" in error ? (error as { code?: string }).code : undefined;
+
     // Composite key on (user_id, quote_id) guarantees uniqueness.
     // If concurrent create hits duplicate, we treat it as already favorited.
-    if (!(error instanceof Error) || !("code" in error) || (error as { code?: string }).code !== "P2002") {
+    if (code === "P2002") {
+      // no-op
+    } else if (code === "P2003") {
+      const message = error instanceof Error ? error.message : "";
+
+      if (message.includes("favorites_user_id_fkey")) {
+        await clearSessionCookie();
+        return {
+          ok: false,
+          favorited: false,
+          redirectTo: `/login?next=${encodeURIComponent(nextPath)}`,
+          message: "登录状态已失效，请重新登录后再收藏。",
+        };
+      }
+
+      if (message.includes("favorites_quote_id_fkey")) {
+        return {
+          ok: false,
+          favorited: false,
+          message: "该引文不存在或已被删除。",
+        };
+      }
+
+      throw error;
+    } else {
       throw error;
     }
   }
@@ -67,6 +95,7 @@ export async function toggleFavoriteAction(quoteId: string, nextPath: string): P
   revalidatePath("/quotes");
   revalidatePath(`/quotes/${quoteId}`);
   revalidatePath("/me/favorites");
+  revalidateTag(`favorites:${session.user.id}`, "max");
 
   return {
     ok: true,

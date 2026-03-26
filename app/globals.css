@@ -26,6 +26,7 @@
 
 body {
   @apply bg-background text-foreground antialiased;
+  padding-top: env(safe-area-inset-top);
 }
 
 @layer base {
@@ -65,6 +66,36 @@ body {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+}
+
+@media (max-width: 767px) {
+  .reading-quote-clamp {
+    -webkit-line-clamp: 4;
+  }
+
+  .reading-secondary-clamp {
+    -webkit-line-clamp: 2;
+  }
+
+  .quote-card .reading-quote {
+    font-size: 1.1rem;
+    line-height: 1.78;
+  }
+
+  .quote-card .reading-secondary {
+    margin-top: 0.5rem;
+    padding-left: 0.625rem;
+    line-height: 1.6;
+  }
+
+  .quote-card .quote-tag-row {
+    min-height: 1.75rem;
+  }
+
+  .quote-card .quote-meta-row,
+  .quote-card .quote-source-row {
+    line-height: 1.35;
+  }
 }
 
 .quote-text-region {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo } from "react";
+import { useActionState, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { tag_type } from "@prisma/client";
 
 import { submitQuoteAction } from "@/app/submit/actions";
@@ -63,6 +63,18 @@ export function SubmitForm({
   initialValues?: SubmitInitialValues | null;
 }) {
   const [state, formAction, isPending] = useActionState(submitQuoteAction, initialSubmitFormState);
+  const [uploadStatus, setUploadStatus] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadedEvidences, setUploadedEvidences] = useState<
+    Array<{
+      id: string;
+      object_key: string;
+      filename: string;
+      mime_type: string;
+      size: number;
+    }>
+  >([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const languageOptions = useMemo(() => {
     if (languages.length > 0) {
@@ -120,6 +132,120 @@ export function SubmitForm({
     : state.values.tag_ids.length > 0
       ? state.values.tag_ids
       : initialValues?.tag_ids ?? [];
+
+  async function requestPresign(file: File) {
+    const response = await fetch("/api/evidence/presign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: file.name,
+        mimeType: file.type,
+        size: file.size,
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error ?? "PRESIGN_FAILED");
+    }
+    return data as {
+      upload: {
+        id: string;
+        object_key: string;
+        filename: string;
+        mime_type: string;
+        size: number;
+      };
+      uploadUrl: string;
+    };
+  }
+
+  async function completeUpload(uploadId: string) {
+    const response = await fetch("/api/evidence/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uploadId }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error ?? "UPLOAD_COMPLETE_FAILED");
+    }
+    return data.upload as {
+      id: string;
+      object_key: string;
+      filename: string;
+      mime_type: string;
+      size: number;
+    };
+  }
+
+  async function discardUpload(uploadId: string) {
+    await fetch("/api/evidence/discard", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uploadId }),
+    });
+  }
+
+  async function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) return;
+
+    setUploadStatus("");
+    const remainSlots = Math.max(0, 3 - uploadedEvidences.length);
+    if (remainSlots <= 0) {
+      setUploadStatus("最多上传 3 张证据图片。");
+      event.target.value = "";
+      return;
+    }
+
+    const selectedFiles = files.slice(0, remainSlots);
+    setIsUploading(true);
+
+    try {
+      for (const file of selectedFiles) {
+        const presign = await requestPresign(file);
+
+        const putResponse = await fetch(presign.uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.type,
+          },
+          body: file,
+        });
+
+        if (!putResponse.ok) {
+          throw new Error("UPLOAD_TO_R2_FAILED");
+        }
+
+        const completed = await completeUpload(presign.upload.id);
+        setUploadedEvidences((prev) => [...prev, completed]);
+      }
+
+      setUploadStatus("证据图片上传成功。");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "UPLOAD_FAILED";
+      setUploadStatus(`上传失败：${message}`);
+    } finally {
+      setIsUploading(false);
+      if (event.target) {
+        event.target.value = "";
+      }
+    }
+  }
+
+  async function handleRemoveEvidence(uploadId: string) {
+    setUploadedEvidences((prev) => prev.filter((item) => item.id !== uploadId));
+    await discardUpload(uploadId);
+    setUploadStatus("已移除该证据图片。");
+  }
+
+  function formatFileSize(size: number) {
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+  }
 
   return (
     <Card>
@@ -282,9 +408,42 @@ export function SubmitForm({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="evidence_file">证据文件上传（首版占位）</Label>
-              <Input id="evidence_file" name="evidence_file" type="file" />
-              <p className="text-xs text-muted-foreground">首版仅记录文件元信息，后续接入对象存储。</p>
+              <Label htmlFor="evidence_file">证据图片上传（最多 3 张，每张 ≤ 5MB）</Label>
+              <Input
+                accept="image/jpeg,image/png,image/webp"
+                id="evidence_file"
+                multiple
+                onChange={handleFileSelection}
+                ref={fileInputRef}
+                type="file"
+              />
+              <p className="text-xs text-muted-foreground">支持 JPG / PNG / WEBP。上传后将用于管理员审核。</p>
+              {isUploading ? <p className="text-xs text-muted-foreground">图片上传中，请稍候...</p> : null}
+              {uploadStatus ? <p className="text-xs text-muted-foreground">{uploadStatus}</p> : null}
+              {uploadedEvidences.length > 0 ? (
+                <div className="space-y-2">
+                  {uploadedEvidences.map((item) => (
+                    <div className="flex items-center justify-between rounded-md border px-3 py-2 text-sm" key={item.id}>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{item.filename}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.mime_type} · {formatFileSize(item.size)}
+                        </p>
+                      </div>
+                      <button
+                        className="ml-3 text-xs text-muted-foreground underline-offset-4 hover:underline"
+                        onClick={() => {
+                          void handleRemoveEvidence(item.id);
+                        }}
+                        type="button"
+                      >
+                        移除
+                      </button>
+                      <input name="uploaded_evidence_ids" type="hidden" value={item.id} />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <FieldError message={state.fieldErrors.evidence} />

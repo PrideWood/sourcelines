@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidateTag } from "next/cache";
+
 import type { ChangePasswordState } from "@/app/settings/account/form-state";
 import { getSession } from "@/lib/auth/session";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
@@ -78,6 +80,8 @@ export async function changePasswordAction(
       password_hash: nextPasswordHash,
     },
   });
+
+  revalidateTag(`account:${session.user.id}`, "max");
 
   return {
     successMessage: "密码修改成功。当前登录状态保持有效。",

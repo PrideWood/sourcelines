@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { reviewSubmissionAction } from "@/app/admin/submissions/actions";
 import { getAdminSubmissionById } from "@/lib/queries";
+import { getPresignedGetUrl } from "@/lib/r2";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,21 @@ export default async function AdminSubmissionDetailPage({
   if (!submission) {
     redirect("/admin/submissions?error=not_found");
   }
+
+  const evidenceImageUrlEntries = await Promise.all(
+    submission.submission_evidences.map(async (evidence) => {
+      if (!evidence.object_key) {
+        return [evidence.id, null] as const;
+      }
+      try {
+        const url = await getPresignedGetUrl({ objectKey: evidence.object_key, expiresInSeconds: 900 });
+        return [evidence.id, url] as const;
+      } catch {
+        return [evidence.id, null] as const;
+      }
+    }),
+  );
+  const evidenceImageUrlMap = new Map(evidenceImageUrlEntries);
 
   return (
     <div className="space-y-4">
@@ -157,6 +173,25 @@ export default async function AdminSubmissionDetailPage({
             <div className="rounded-md border p-3" key={evidence.id}>
               <p>类型：{evidence.evidence_type}</p>
               {evidence.title ? <p>标题：{evidence.title}</p> : null}
+              {evidence.filename ? (
+                <p>
+                  文件：{evidence.filename}
+                  {evidence.file_size ? ` (${Math.round(evidence.file_size / 1024)} KB)` : ""}
+                </p>
+              ) : null}
+              {evidence.object_key ? <p className="text-xs text-muted-foreground">对象键：{evidence.object_key}</p> : null}
+              {evidence.object_key && evidenceImageUrlMap.get(evidence.id) ? (
+                <div className="mt-2 space-y-2">
+                  <a className="inline-block underline-offset-4 hover:underline" href={evidenceImageUrlMap.get(evidence.id)!} rel="noreferrer" target="_blank">
+                    查看原图
+                  </a>
+                  <img
+                    alt={evidence.filename ?? "证据图片"}
+                    className="h-auto max-h-56 w-auto rounded-md border"
+                    src={evidenceImageUrlMap.get(evidence.id)!}
+                  />
+                </div>
+              ) : null}
               {evidence.url ? (
                 <p>
                   链接：

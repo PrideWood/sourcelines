@@ -4,6 +4,7 @@ import { hashPassword } from "@/lib/auth/password";
 import { prisma } from "@/lib/prisma";
 import { setSessionCookie } from "@/lib/auth/cookie";
 import { signSessionToken } from "@/lib/auth/token";
+import { toAbsoluteUrl } from "@/lib/http/request-url";
 
 function safeRedirectPath(nextValue: string | null) {
   if (!nextValue || !nextValue.startsWith("/")) {
@@ -25,17 +26,17 @@ export async function POST(request: Request) {
   const next = safeRedirectPath(String(formData.get("next") ?? ""));
 
   if (!name || !email || !password) {
-    return NextResponse.redirect(new URL(`/register?error=missing_fields&next=${encodeURIComponent(next)}`, request.url), 303);
+    return NextResponse.redirect(toAbsoluteUrl(request, `/register?error=missing_fields&next=${encodeURIComponent(next)}`), 303);
   }
 
   if (password.length < 8) {
-    return NextResponse.redirect(new URL(`/register?error=weak_password&next=${encodeURIComponent(next)}`, request.url), 303);
+    return NextResponse.redirect(toAbsoluteUrl(request, `/register?error=weak_password&next=${encodeURIComponent(next)}`), 303);
   }
 
   const existed = await prisma.user.findUnique({ where: { email } });
 
   if (existed) {
-    return NextResponse.redirect(new URL(`/register?error=email_exists&next=${encodeURIComponent(next)}`, request.url), 303);
+    return NextResponse.redirect(toAbsoluteUrl(request, `/register?error=email_exists&next=${encodeURIComponent(next)}`), 303);
   }
 
   const passwordHash = await hashPassword(password);
@@ -57,5 +58,5 @@ export async function POST(request: Request) {
   });
 
   await setSessionCookie(token);
-  return NextResponse.redirect(new URL(next, request.url), 303);
+  return NextResponse.redirect(toAbsoluteUrl(request, next), 303);
 }
