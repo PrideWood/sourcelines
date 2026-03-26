@@ -1,5 +1,31 @@
 import { prisma } from "@/lib/prisma";
 
+type RateLimitBucketDelegate = {
+  findUnique(args: {
+    where: { key: string };
+  }): Promise<{ key: string; count: number; window_start: Date } | null>;
+  upsert(args: {
+    where: { key: string };
+    update: {
+      count: number;
+      window_start: Date;
+    };
+    create: {
+      key: string;
+      count: number;
+      window_start: Date;
+    };
+  }): Promise<unknown>;
+  update(args: {
+    where: { key: string };
+    data: {
+      count: {
+        increment: number;
+      };
+    };
+  }): Promise<unknown>;
+};
+
 export class RateLimitError extends Error {
   retryAfterSeconds: number;
 
@@ -39,11 +65,7 @@ export async function enforceRateLimit({
 
   const result = await prisma.$transaction(async (tx) => {
     const rateLimitBucket = (tx as typeof tx & {
-      rateLimitBucket?: {
-        findUnique: typeof prisma.rateLimitBucket.findUnique;
-        upsert: typeof prisma.rateLimitBucket.upsert;
-        update: typeof prisma.rateLimitBucket.update;
-      };
+      rateLimitBucket?: RateLimitBucketDelegate;
     }).rateLimitBucket;
 
     if (!rateLimitBucket) {
